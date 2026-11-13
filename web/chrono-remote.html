@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radar Chrono Remote</title>
+<!-- Web fonts are optional: on the real chrono there is no internet, so the page falls back to system fonts. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Base reset */
+:root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+/* Layout: one-thumb field instrument. LCD-style readout on top, string stats, shot strip, log, settings;
+   the actions you hit with a thumb are pinned to a bottom bar. */
+:root {
+  --bg: #ebede4;
+  --surface: #f9faf5;
+  --ink: #15170f;
+  --ink-2: #4b5040;
+  --muted: #6a6f5b;
+  --line: #d6d9ca;
+  --accent: #c7470a;
+  --accent-ink: #ffffff;
+  --accent-wash: rgba(199, 71, 10, 0.10);
+  --lcd: #cdd5ba;
+  --lcd-ink: #182010;
+  --lcd-dim: #47523a;
+  --lcd-edge: rgba(24, 32, 16, 0.10);
+  --good: #0ca30c;
+  --warn: #fab219;
+  --scrim: rgba(12, 14, 9, 0.45);
+  --shadow: 0 1px 2px rgba(21, 23, 15, 0.10);
+  --font-ui: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-read: "Barlow Condensed", "Arial Narrow", "Barlow", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10120d; --surface: #191c15; --ink: #eef0e5; --ink-2: #c4c8b5; --muted: #9a9f8a; --line: #2c3026;
+    --accent: #e5672a; --accent-ink: #1a0d04; --accent-wash: rgba(229, 103, 42, 0.14);
+    --lcd: #222a19; --lcd-ink: #e4eccd; --lcd-dim: #a9b48f; --lcd-edge: rgba(228, 236, 205, 0.08);
+    --scrim: rgba(0, 0, 0, 0.6); --shadow: none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10120d; --surface: #191c15; --ink: #eef0e5; --ink-2: #c4c8b5; --muted: #9a9f8a; --line: #2c3026;
+  --accent: #e5672a; --accent-ink: #1a0d04; --accent-wash: rgba(229, 103, 42, 0.14);
+  --lcd: #222a19; --lcd-ink: #e4eccd; --lcd-dim: #a9b48f; --lcd-edge: rgba(228, 236, 205, 0.08);
+  --scrim: rgba(0, 0, 0, 0.6); --shadow: none;
+  color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.4; }
+.app { max-width: 30rem; margin: 0 auto; padding-inline: 16px; padding-block: 14px 128px; display: grid; gap: 14px; }
+h2 { font: 600 16px/1.2 var(--font-ui); margin: 0; text-wrap: balance; }
+.sub { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.empty { margin: 8px 0; font-size: 14px; color: var(--muted); }
+
+/* header */
+.top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 8px; font: 700 22px/1 var(--font-read); letter-spacing: 0.06em; text-transform: uppercase; }
+.brand svg { width: 22px; height: 22px; }
+.brand svg path, .brand svg circle { stroke: var(--accent); fill: none; stroke-width: 2; stroke-linecap: round; }
+.brand svg circle { fill: var(--accent); stroke: none; }
+.link-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-variant-numeric: tabular-nums; }
+.link-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
+.demo { margin: 0; font-size: 13px; color: var(--ink-2); background: var(--accent-wash); border-radius: 10px; padding: 9px 12px; }
+.demo strong { color: var(--ink); }
+
+/* readout */
+.readout { background: var(--lcd); color: var(--lcd-ink); border-radius: 14px; padding: 12px 16px 12px; box-shadow: inset 0 0 0 1px var(--lcd-edge); }
+.readout-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lcd-dim); }
+.armed { display: inline-flex; align-items: center; gap: 6px; }
+.armed i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; }
+.armed.busy i { background: var(--warn); }
+.readout-value { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; font-family: var(--font-read); font-weight: 600; font-size: clamp(64px, 21vw, 96px); line-height: 0.95; }
+.readout-value .unit { font-size: 24px; font-weight: 500; color: var(--lcd-dim); }
+.readout-meta { margin-top: 6px; font-size: 14px; color: var(--lcd-dim); font-variant-numeric: tabular-nums; }
+.flash { animation: refresh 380ms ease-out; }
+@keyframes refresh { 0% { opacity: 0.15; } 100% { opacity: 1; } }
+
+/* string + stats */
+.string-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.string-head label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+#stringName { flex: 1 1 12rem; min-width: 0; font: 600 17px var(--font-ui); color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 4px 0; border-radius: 0; }
+#stringName:focus { outline: none; border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
+.chip { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); }
+.count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 10px; }
+.stat { background: var(--surface); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.stat .k { font-size: 12.5px; color: var(--muted); }
+.stat .v { font-weight: 600; font-size: 22px; line-height: 1.1; white-space: nowrap; }
+.stat .v small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+
+/* cards */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; position: relative; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.card-head > div { min-width: 0; }
+
+/* chart */
+.chart { margin-top: 8px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .tick { fill: var(--muted); font: 500 11px var(--font-ui); font-variant-numeric: tabular-nums; }
+.chart .band { fill: var(--accent); fill-opacity: 0.10; }
+.chart .avg { stroke: var(--ink-2); stroke-width: 1.5; }
+.chart .lbl { fill: var(--ink-2); font: 600 11px var(--font-ui); font-variant-numeric: tabular-nums; }
+.chart .pt { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart .pt.weak { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.chart .hit { fill: transparent; cursor: pointer; }
+.chart .hit:focus { outline: none; }
+.chart .hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.tip { position: absolute; z-index: 2; pointer-events: none; transform: translate(-50%, calc(-100% - 10px)); background: var(--ink); color: var(--surface); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tip strong { font-size: 14px; }
+.tip span { opacity: 0.75; margin-left: 6px; }
+
+/* log */
+.table-wrap { overflow-x: auto; margin-top: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+.num { text-align: right; }
+.weak-flag { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; font-size: 12px; color: var(--ink-2); }
+.weak-flag svg { width: 12px; height: 12px; }
+.weak-flag path { fill: var(--warn); }
+.weak-flag text { fill: var(--ink); font: 700 9px var(--font-ui); }
+
+/* buttons */
+.btn { font: 600 15px var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 48px; cursor: pointer; }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 14px; border-radius: 10px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn:focus-visible, .seg input:focus-visible + label, .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* settings */
+.settings { display: grid; gap: 14px; margin-top: 10px; }
+.setting { display: grid; gap: 6px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.setting legend, .setting .k { font-size: 13px; font-weight: 600; color: var(--ink-2); padding: 0; margin-bottom: 6px; }
+.hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 8px 6px; border-radius: 8px; font-weight: 600; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.seg input:checked + label { background: var(--surface); color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch span { flex: none; width: 44px; height: 26px; border-radius: 999px; background: var(--line); position: relative; transition: background 150ms; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); transition: transform 150ms; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(18px); }
+
+/* earlier strings */
+.earlier-row { display: grid; gap: 2px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.earlier-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.earlier-row .name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-weight: 600; }
+.earlier-row .line { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* how it connects */
+.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.steps b { color: var(--ink); font-weight: 600; }
+.mono { font-family: var(--font-mono); font-size: 13px; }
+
+/* bottom action bar */
+.actionbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+.actionbar .inner { max-width: 30rem; margin: 0 auto; display: grid; grid-template-columns: 1fr 1.45fr 1fr; gap: 8px; }
+
+/* toast + sheet */
+.toast { position: fixed; z-index: 6; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(28rem, calc(100% - 32px)); display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--ink); color: var(--surface); border-radius: 12px; padding: 10px 12px; font-size: 14px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); }
+.toast button { font: 600 14px var(--font-ui); background: transparent; color: var(--surface); border: 1px solid currentColor; border-radius: 8px; padding: 5px 10px; cursor: pointer; flex: none; }
+.sheet { position: fixed; inset: 0; z-index: 7; background: var(--scrim); display: grid; align-items: end; }
+.sheet-panel { width: 100%; max-width: 30rem; margin: 0 auto; background: var(--surface); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; }
+.sheet textarea { width: 100%; height: 38vh; resize: none; font: 12px/1.45 var(--font-mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flash { animation: none; }
+  .switch span, .switch span::after { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2.2"></circle><path d="M5 12.5a6.5 6.5 0 0 1 6.5 6.5"></path><path d="M5 7a12 12 0 0 1 12 12"></path></svg>
+      Chrono
+    </div>
+    <div class="link-pill" title="Demo connection"><span class="dot" aria-hidden="true"></span>Connected · CHRONO-7F2A · 192.168.4.1</div>
+  </header>
+
+  <p class="demo"><strong>Demo with simulated shots.</strong> The first string is example data. On the real chrono, the Pico serves this page over its own Wi-Fi, so it works with no internet or cell signal.</p>
+
+  <section class="readout" aria-live="polite" aria-atomic="true">
+    <div class="readout-top">
+      <span id="readingLabel">Muzzle velocity</span>
+      <span class="armed" id="armed"><i aria-hidden="true"></i><span id="armedText">Armed</span></span>
+    </div>
+    <div class="readout-value" id="readoutValue"><span id="lastValue">—</span><span class="unit" id="lastUnit">fps</span></div>
+    <div class="readout-meta" id="lastMeta">No shots yet.</div>
+  </section>
+
+  <section aria-labelledby="stringTitle">
+    <h2 id="stringTitle" class="sr-only" hidden>Current string</h2>
+    <div class="string-head">
+      <label for="stringName">String name</label>
+      <input id="stringName" type="text" autocomplete="off" spellcheck="false">
+      <span class="chip" id="projChip">Paintball</span>
+      <span class="count" id="count">0 shots</span>
+    </div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="card" aria-labelledby="chartTitle">
+    <div class="card-head">
+      <div>
+        <h2 id="chartTitle">Shot by shot</h2>
+        <p class="sub">Each dot is one shot. The shaded band is ±1 SD around the average; hollow dots had a weak signal.</p>
+      </div>
+    </div>
+    <div class="chart" id="chart"></div>
+    <div class="tip" id="tip" hidden></div>
+  </section>
+
+  <section class="card" aria-labelledby="logTitle">
+    <div class="card-head">
+      <div>
+        <h2 id="logTitle">Shot log</h2>
+        <p class="sub">Signal is how far the echo stood above the noise.</p>
+      </div>
+      <div class="btn-row">
+        <button class="btn small" id="deleteLast" type="button">Delete last</button>
+        <button class="btn small" id="exportCsv" type="button">Export CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Shot</th><th scope="col" class="num" id="speedHead">Speed (fps)</th><th scope="col" class="num">Vs avg</th><th scope="col">Signal</th></tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="setTitle">
+    <h2 id="setTitle">Chrono settings</h2>
+    <div class="settings">
+      <fieldset class="setting">
+        <legend>Projectile</legend>
+        <div class="seg">
+          <input type="radio" name="proj" id="projPaintball" value="paintball" checked><label for="projPaintball">Paintball</label>
+          <input type="radio" name="proj" id="projDart" value="dart"><label for="projDart">Half dart</label>
+        </div>
+        <p class="hint">Sets the drag model used to work back to muzzle speed. Changing it starts a new string.</p>
+      </fieldset>
+      <fieldset class="setting">
+        <legend>Report speed</legend>
+        <div class="seg">
+          <input type="radio" name="reading" id="readMuzzle" value="muzzle" checked><label for="readMuzzle">At muzzle</label>
+          <input type="radio" name="reading" id="readChrono" value="chrono"><label for="readChrono">At the chrono</label>
+        </div>
+        <p class="hint" id="readingHint">Muzzle speed is estimated from the speed track. "At the chrono" is the speed where the projectile passes the radar.</p>
+      </fieldset>
+      <fieldset class="setting">
+        <legend>Units</legend>
+        <div class="seg">
+          <input type="radio" name="units" id="unitFps" value="fps" checked><label for="unitFps">fps</label>
+          <input type="radio" name="units" id="unitMs" value="ms"><label for="unitMs">m/s</label>
+        </div>
+      </fieldset>
+      <fieldset class="setting">
+        <legend>Sensitivity</legend>
+        <div class="seg">
+          <input type="radio" name="sens" id="sensLow" value="low"><label for="sensLow">Low</label>
+          <input type="radio" name="sens" id="sensNormal" value="normal" checked><label for="sensNormal">Normal</label>
+          <input type="radio" name="sens" id="sensHigh" value="high"><label for="sensHigh">High</label>
+        </div>
+        <p class="hint">Higher catches weaker echoes (foam darts) but is more likely to trigger on things moving nearby.</p>
+      </fieldset>
+      <label class="switch" for="wake">Keep screen on<input type="checkbox" id="wake"><span aria-hidden="true"></span></label>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="earlierTitle">
+    <h2 id="earlierTitle">Earlier strings</h2>
+    <div id="earlier"></div>
+  </section>
+
+  <section class="card" aria-labelledby="howTitle">
+    <h2 id="howTitle">How the phone connects</h2>
+    <ol class="steps">
+      <li>Turn the chrono on. It starts its own Wi-Fi network, <b>CHRONO-7F2A</b>.</li>
+      <li>On the iPhone, open Settings, then Wi-Fi, and join it. It will say <b>No Internet Connection</b>. That is expected.</li>
+      <li>Open Safari to <span class="mono">192.168.4.1</span>, or add it to your Home Screen once. No app, internet or cell service needed.</li>
+    </ol>
+  </section>
+</div>
+
+<nav class="actionbar" aria-label="Chrono actions">
+  <div class="inner">
+    <button class="btn" id="burst" type="button">Burst ×5</button>
+    <button class="btn primary" id="fire" type="button">Fire test shot</button>
+    <button class="btn" id="newString" type="button">New string</button>
+  </div>
+</nav>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastAction" hidden>Undo</button></div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 id="sheetTitle">Export CSV</h2>
+    <p class="hint">On the real chrono this saves a file to the Files app. In this demo, copy the text.</p>
+    <textarea id="csvText" readonly aria-label="CSV data"></textarea>
+    <div class="btn-row">
+      <button class="btn primary" id="copyCsv" type="button">Copy CSV</button>
+      <button class="btn" id="closeSheet" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const FT_PER_M = 3.28084;
+  const WEAK_DB = 25;
+  // Simulated projectiles. k is the drag constant (1/m) from dv/dx = -k v; the chrono sits chronoFt from the muzzle.
+  const PROJ = {
+    paintball: { name: 'Paintball', mean: 284, sd: 3.0, k: 0.022, chronoFt: 6, sig: [27, 39], bps: 12 },
+    dart: { name: 'Half dart', mean: 168, sd: 4.5, k: 0.098, chronoFt: 4, sig: [18, 32], bps: 6 },
+  };
+  const THRESH = { low: 26, normal: 21, high: 16 };
+
+  // Seeded generator so the example string looks the same every time the page opens.
+  function mulberry32(a) {
+    return () => {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  let rnd = mulberry32(11);
+  const gauss = () => { let u = 0; while (u === 0) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
+  const uniform = (a, b) => a + (b - a) * rnd();
+
+  const state = {
+    proj: 'paintball', units: 'fps', reading: 'muzzle', sens: 'normal',
+    current: { name: 'Marker A, 0.68 First Strike', proj: 'paintball', shots: [] },
+    earlier: [],
+    stringCount: 2,
+    busy: false,
+  };
+
+  function makeShot(proj, t, meanShift = 0, sdScale = 1) {
+    const p = PROJ[proj];
+    const sig = uniform(p.sig[0], p.sig[1]);
+    const noise = sig < WEAK_DB ? 0.9 : 0.4;
+    return { v: p.mean + meanShift + gauss() * p.sd * sdScale + gauss() * noise, sig, t };
+  }
+
+  // Example data: an earlier string before a regulator tune, then the current string (3 singles + a 5-shot burst).
+  (function seed() {
+    const now = Date.now();
+    const old = [];
+    for (let i = 0; i < 10; i++) old.push(makeShot('paintball', now - 900000 + i * 7000, -5, 2));
+    state.earlier.push({ name: 'Marker A, before regulator tune', proj: 'paintball', shots: old });
+    let t = now - 45000;
+    for (let i = 0; i < 3; i++) { state.current.shots.push(makeShot('paintball', t)); t += 6000 + rnd() * 3000; }
+    for (let i = 0; i < 5; i++) { state.current.shots.push(makeShot('paintball', t)); t += (1000 / 12) * (0.92 + rnd() * 0.16); }
+    rnd = Math.random;
+  })();
+
+  // Remembered settings (per viewer convenience only).
+  try {
+    const saved = JSON.parse(localStorage.getItem('chrono-settings') || '{}');
+    for (const key of ['units', 'reading', 'sens']) if (typeof saved[key] === 'string') state[key] = saved[key];
+  } catch (e) { /* storage unavailable; defaults are fine */ }
+  function saveSettings() {
+    try { localStorage.setItem('chrono-settings', JSON.stringify({ units: state.units, reading: state.reading, sens: state.sens })); } catch (e) { /* ignore */ }
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const unitLabel = () => (state.units === 'ms' ? 'm/s' : 'fps');
+  const decimals = () => (state.units === 'ms' ? 2 : 1);
+  const fmt = (x) => x.toFixed(decimals());
+  const signed = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(decimals());
+
+  function atChrono(v, proj) { const p = PROJ[proj]; return v * Math.exp(-p.k * p.chronoFt / FT_PER_M); }
+  function shown(v, proj) {
+    const x = state.reading === 'chrono' ? atChrono(v, proj) : v;
+    return state.units === 'ms' ? x * 0.3048 : x;
+  }
+
+  function stats(str) {
+    const xs = str.shots.map((s) => shown(s.v, str.proj));
+    const n = xs.length;
+    if (!n) return { n: 0, xs };
+    const mean = xs.reduce((a, b) => a + b, 0) / n;
+    const sd = n > 1 ? Math.sqrt(xs.reduce((a, x) => a + (x - mean) ** 2, 0) / (n - 1)) : 0;
+    const lo = Math.min(...xs), hi = Math.max(...xs);
+    return { n, mean, sd, es: hi - lo, lo, hi, xs };
+  }
+
+  // Rate of fire from the most recent run of 3+ shots fired less than 0.6 s apart.
+  function rateOfFire(shots) {
+    let end = shots.length - 1;
+    while (end >= 2) {
+      let start = end;
+      while (start > 0 && shots[start].t - shots[start - 1].t < 600) start--;
+      if (end - start >= 2) return (end - start) / ((shots[end].t - shots[start].t) / 1000);
+      end = start - 1;
+    }
+    return null;
+  }
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function renderReadout(flash) {
+    const shots = state.current.shots;
+    $('readingLabel').textContent = state.reading === 'chrono' ? 'Speed at the chrono' : 'Muzzle velocity';
+    $('lastUnit').textContent = unitLabel();
+    if (!shots.length) {
+      $('lastValue').textContent = '—';
+      $('lastMeta').textContent = 'No shots in this string yet.';
+      return;
+    }
+    const st = stats(state.current);
+    const last = shots[shots.length - 1];
+    const v = shown(last.v, state.current.proj);
+    $('lastValue').textContent = fmt(v);
+    let meta = `Shot ${shots.length} · signal ${Math.round(last.sig)} dB`;
+    if (st.n > 1) meta += ` · ${signed(v - st.mean)} vs avg`;
+    if (last.sig < WEAK_DB) meta += ' · weak signal';
+    $('lastMeta').textContent = meta;
+    if (flash) {
+      const box = $('readoutValue');
+      box.classList.remove('flash');
+      void box.offsetWidth;
+      box.classList.add('flash');
+    }
+  }
+
+  function renderStats() {
+    const st = stats(state.current);
+    const rof = rateOfFire(state.current.shots);
+    const u = unitLabel();
+    const sdDec = state.units === 'ms' ? 2 : 1;
+    const tiles = [
+      ['Average', st.n ? fmt(st.mean) : '—', st.n ? u : ''],
+      ['Std dev (SD)', st.n > 1 ? st.sd.toFixed(sdDec) : '—', st.n > 1 ? u : ''],
+      ['Extreme spread', st.n > 1 ? fmt(st.es) : '—', st.n > 1 ? u : ''],
+      ['Low', st.n ? fmt(st.lo) : '—', st.n ? u : ''],
+      ['High', st.n ? fmt(st.hi) : '—', st.n ? u : ''],
+      ['Rate of fire', rof ? rof.toFixed(1) : '—', rof ? 'bps' : ''],
+    ];
+    const box = $('stats');
+    box.textContent = '';
+    for (const [k, v, unit] of tiles) {
+      const tile = el('div', 'stat');
+      tile.append(el('span', 'k', k));
+      const val = el('span', 'v', v);
+      if (unit) val.append(el('small', '', unit));
+      tile.append(val);
+      box.append(tile);
+    }
+    $('count').textContent = `${st.n} shot${st.n === 1 ? '' : 's'}`;
+    $('projChip').textContent = PROJ[state.current.proj].name;
+    if (document.activeElement !== $('stringName')) $('stringName').value = state.current.name;
+  }
+
+  function niceStep(raw) {
+    const p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const f = raw / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, cls) {
+    const node = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (cls) node.setAttribute('class', cls);
+    return node;
+  }
+
+  function renderChart() {
+    const box = $('chart');
+    hideTip();
+    box.textContent = '';
+    const str = state.current;
+    const st = stats(str);
+    if (st.n < 2) {
+      box.append(el('p', 'empty', 'Fire at least two shots to see the string.'));
+      return;
+    }
+    const W = Math.max(260, Math.round(box.clientWidth));
+    const H = 196;
+    const m = { l: 40, r: 64, t: 18, b: 26 };
+    const pw = W - m.l - m.r, ph = H - m.t - m.b;
+    let lo = Math.min(st.lo, st.mean - st.sd), hi = Math.max(st.hi, st.mean + st.sd);
+    const minSpan = state.units === 'ms' ? 0.6 : 2;
+    const span = Math.max(hi - lo, minSpan);
+    const step = niceStep(span / 4);
+    lo = Math.floor((lo - span * 0.1) / step) * step;
+    hi = Math.ceil((hi + span * 0.1) / step) * step;
+    const x = (i) => m.l + (i / (st.n - 1)) * pw;
+    const y = (v) => m.t + (1 - (v - lo) / (hi - lo)) * ph;
+    const tickDec = step < 1 ? (step < 0.1 ? 2 : 1) : 0;
+
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'group', 'aria-label': `Shot speeds for ${str.name}, ${st.n} shots, average ${fmt(st.mean)} ${unitLabel()}` });
+    for (let v = lo; v <= hi + step / 2; v += step) {
+      const yy = y(v);
+      svg.append(svgEl('line', { x1: m.l, x2: m.l + pw, y1: yy, y2: yy }, 'grid'));
+      const t = svgEl('text', { x: m.l - 6, y: yy + 4, 'text-anchor': 'end' }, 'tick');
+      t.textContent = v.toFixed(tickDec);
+      svg.append(t);
+    }
+    svg.append(svgEl('rect', { x: m.l, width: pw, y: y(st.mean + st.sd), height: Math.max(1, y(st.mean - st.sd) - y(st.mean + st.sd)) }, 'band'));
+    svg.append(svgEl('line', { x1: m.l, x2: m.l + pw, y1: y(st.mean), y2: y(st.mean) }, 'avg'));
+    const avgLbl = svgEl('text', { x: m.l + pw + 8, y: y(st.mean) + 4 }, 'lbl');
+    avgLbl.textContent = `avg ${fmt(st.mean)}`;
+    svg.append(avgLbl);
+    const sdLbl = svgEl('text', { x: m.l + pw + 8, y: y(st.mean + st.sd) + 4 }, 'tick');
+    sdLbl.textContent = '+1 SD';
+    if (Math.abs(y(st.mean + st.sd) - y(st.mean)) > 12) svg.append(sdLbl);
+
+    const every = st.n <= 12 ? 1 : Math.ceil(st.n / 10);
+    for (let i = 0; i < st.n; i++) {
+      if (i % every !== 0 && i !== st.n - 1) continue;
+      const t = svgEl('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, 'tick');
+      t.textContent = String(i + 1);
+      svg.append(t);
+    }
+
+    const shots = str.shots;
+    for (let i = 0; i < st.n; i++) {
+      const isLast = i === st.n - 1;
+      const cx = x(i), cy = y(st.xs[i]);
+      svg.append(svgEl('circle', { cx, cy, r: isLast ? 5.5 : 4 }, shots[i].sig < WEAK_DB ? 'pt weak' : 'pt'));
+      const hit = svgEl('circle', { cx, cy, r: 13, tabindex: 0, 'aria-label': `Shot ${i + 1}: ${fmt(st.xs[i])} ${unitLabel()}, signal ${Math.round(shots[i].sig)} dB` }, 'hit');
+      const show = () => showTip(i, cx, cy, st.xs[i], shots[i].sig);
+      hit.addEventListener('pointerenter', show);
+      hit.addEventListener('focus', show);
+      hit.addEventListener('click', show);
+      hit.addEventListener('pointerleave', hideTip);
+      hit.addEventListener('blur', hideTip);
+      svg.append(hit);
+    }
+    // Label only the latest shot.
+    const lastV = st.xs[st.n - 1];
+    const lblY = lastV < st.mean ? y(lastV) + 18 : y(lastV) - 10;   // keep the label off the average line
+    const lastLbl = svgEl('text', { x: x(st.n - 1) - 4, y: lblY, 'text-anchor': 'end' }, 'lbl');
+    lastLbl.textContent = fmt(lastV);
+    svg.append(lastLbl);
+    box.append(svg);
+  }
+
+  function showTip(i, cx, cy, v, sig) {
+    const tip = $('tip');
+    const box = $('chart');
+    tip.textContent = '';
+    tip.append(el('strong', '', `${fmt(v)} ${unitLabel()}`));
+    tip.append(el('span', '', `Shot ${i + 1} · ${Math.round(sig)} dB`));
+    tip.hidden = false;
+    const left = Math.min(Math.max(box.offsetLeft + cx, 70), box.offsetLeft + box.clientWidth - 70);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${box.offsetTop + cy}px`;
+  }
+  function hideTip() { $('tip').hidden = true; }
+
+  function weakFlag() {
+    const wrap = el('span', 'weak-flag');
+    const svg = svgEl('svg', { viewBox: '0 0 12 12', 'aria-hidden': 'true' });
+    svg.append(svgEl('path', { d: 'M6 0.8 11.6 11 0.4 11Z' }));
+    const mark = svgEl('text', { x: 6, y: 10, 'text-anchor': 'middle' });
+    mark.textContent = '!';
+    svg.append(mark);
+    wrap.append(svg, document.createTextNode('weak'));
+    return wrap;
+  }
+
+  function renderLog() {
+    const body = $('logBody');
+    body.textContent = '';
+    $('speedHead').textContent = `Speed (${unitLabel()})`;
+    const str = state.current;
+    const st = stats(str);
+    if (!st.n) {
+      const tr = el('tr');
+      const td = el('td', 'empty', 'No shots in this string yet.');
+      td.colSpan = 4;
+      tr.append(td);
+      body.append(tr);
+      return;
+    }
+    for (let i = st.n - 1; i >= 0; i--) {
+      const tr = el('tr');
+      tr.append(el('td', '', `#${i + 1}`));
+      tr.append(el('td', 'num', fmt(st.xs[i])));
+      tr.append(el('td', 'num', st.n > 1 ? signed(st.xs[i] - st.mean) : '—'));
+      const sigCell = el('td', '', `${Math.round(str.shots[i].sig)} dB`);
+      if (str.shots[i].sig < WEAK_DB) sigCell.append(weakFlag());
+      tr.append(sigCell);
+      body.append(tr);
+    }
+  }
+
+  function renderEarlier() {
+    const box = $('earlier');
+    box.textContent = '';
+    if (!state.earlier.length) {
+      box.append(el('p', 'empty', 'Strings you finish with New string show up here.'));
+      return;
+    }
+    for (const str of state.earlier) {
+      const st = stats(str);
+      const row = el('div', 'earlier-row');
+      const name = el('div', 'name', str.name);
+      name.append(el('span', 'chip', PROJ[str.proj].name));
+      row.append(name);
+      const line = st.n
+        ? `${st.n} shots · avg ${fmt(st.mean)} · SD ${st.sd.toFixed(state.units === 'ms' ? 2 : 1)} · ES ${fmt(st.es)} ${unitLabel()}`
+        : 'No shots';
+      row.append(el('div', 'line', line));
+      box.append(row);
+    }
+  }
+
+  function renderAll(flash = false) {
+    renderReadout(flash);
+    renderStats();
+    renderChart();
+    renderLog();
+    renderEarlier();
+  }
+
+  // Toast with optional undo
+  let toastTimer = null;
+  let toastUndo = null;
+  function toast(text, undo) {
+    $('toastText').textContent = text;
+    toastUndo = undo || null;
+    $('toastAction').hidden = !undo;
+    $('toast').hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { $('toast').hidden = true; toastUndo = null; }, undo ? 6000 : 3500);
+  }
+  $('toastAction').addEventListener('click', () => {
+    if (toastUndo) toastUndo();
+    toastUndo = null;
+    $('toast').hidden = true;
+  });
+
+  function setBusy(busy) {
+    state.busy = busy;
+    $('armed').classList.toggle('busy', busy);
+    $('armedText').textContent = busy ? 'Measuring' : 'Armed';
+    for (const id of ['fire', 'burst', 'newString']) $(id).disabled = busy;
+  }
+
+  function fireOne(quiet) {
+    const shot = makeShot(state.current.proj, Date.now());
+    const threshold = THRESH[state.sens];
+    if (shot.sig < threshold) {
+      if (!quiet) toast(`No reading: the echo was only ${Math.round(shot.sig)} dB. Move closer or raise sensitivity.`);
+      return false;
+    }
+    state.current.shots.push(shot);
+    renderAll(true);
+    return true;
+  }
+
+  $('fire').addEventListener('click', () => fireOne(false));
+
+  $('burst').addEventListener('click', () => {
+    const p = PROJ[state.current.proj];
+    setBusy(true);
+    let fired = 0, missed = 0;
+    const gap = 1000 / p.bps;
+    const tick = () => {
+      if (fireOne(true)) fired++; else missed++;
+      if (fired + missed < 5) setTimeout(tick, gap * (0.92 + Math.random() * 0.16));
+      else {
+        setBusy(false);
+        if (missed) toast(`${missed} of 5 shots gave no reading (weak echo).`);
+      }
+    };
+    tick();
+  });
+
+  function startNewString(reasonText) {
+    const cur = state.current;
+    if (cur.shots.length) state.earlier.unshift(cur);
+    state.current = { name: `String ${state.stringCount++}`, proj: state.proj, shots: [] };
+    renderAll();
+    if (reasonText) toast(reasonText);
+  }
+
+  $('newString').addEventListener('click', () => {
+    const cur = state.current;
+    if (!cur.shots.length) { toast('This string is already empty.'); return; }
+    startNewString(`Saved "${cur.name}" (${cur.shots.length} shots). New string started.`);
+  });
+
+  $('deleteLast').addEventListener('click', () => {
+    const shots = state.current.shots;
+    if (!shots.length) { toast('No shots to delete.'); return; }
+    const removed = shots.pop();
+    const n = shots.length + 1;
+    renderAll();
+    toast(`Deleted shot ${n}.`, () => { state.current.shots.push(removed); renderAll(); });
+  });
+
+  $('stringName').addEventListener('input', (e) => { state.current.name = e.target.value || 'Untitled string'; });
+
+  function bindRadios(name, apply) {
+    for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
+      input.checked = input.value === state[name];
+      input.addEventListener('change', () => { if (input.checked) apply(input.value); });
+    }
+  }
+  bindRadios('units', (v) => { state.units = v; saveSettings(); renderAll(); });
+  bindRadios('reading', (v) => { state.reading = v; saveSettings(); renderAll(); });
+  bindRadios('sens', (v) => { state.sens = v; saveSettings(); });
+  bindRadios('proj', (v) => {
+    state.proj = v;
+    if (state.current.shots.length) {
+      startNewString(`New string started for ${PROJ[v].name.toLowerCase()}s.`);
+    } else {
+      state.current.proj = v;
+      renderAll();
+    }
+  });
+
+  // CSV export
+  function csvField(s) { return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
+  function buildCsv() {
+    const rows = ['string,projectile,shot,muzzle_fps,at_chrono_fps,signal_db,time'];
+    const all = [state.current, ...state.earlier].filter((s) => s.shots.length);
+    for (const str of all) {
+      str.shots.forEach((s, i) => {
+        rows.push([csvField(str.name), PROJ[str.proj].name, i + 1, s.v.toFixed(2), atChrono(s.v, str.proj).toFixed(2), s.sig.toFixed(1), new Date(s.t).toISOString()].join(','));
+      });
+    }
+    return rows.join('\n');
+  }
+  $('exportCsv').addEventListener('click', () => {
+    $('csvText').value = buildCsv();
+    $('sheet').hidden = false;
+    $('copyCsv').focus();
+  });
+  $('closeSheet').addEventListener('click', () => { $('sheet').hidden = true; $('exportCsv').focus(); });
+  $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) $('sheet').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sheet').hidden) $('sheet').hidden = true; });
+  $('copyCsv').addEventListener('click', () => {
+    const text = $('csvText').value;
+    const fallback = () => { $('csvText').focus(); $('csvText').select(); toast('Text selected. Use Copy from the menu.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast('CSV copied.'), fallback);
+    } else fallback();
+  });
+
+  // Keep the screen awake while timing
+  let wakeLock = null;
+  $('wake').addEventListener('change', async (e) => {
+    if (e.target.checked) {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { $('wake').checked = false; wakeLock = null; });
+        toast('Screen will stay on while this page is open.');
+      } catch (err) {
+        e.target.checked = false;
+        toast('This browser did not allow keeping the screen on.');
+      }
+    } else if (wakeLock) {
+      try { await wakeLock.release(); } catch (err) { /* already released */ }
+      wakeLock = null;
+    }
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 120); });
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.chart')) hideTip(); });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

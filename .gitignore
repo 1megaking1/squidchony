@@ -1,0 +1,14 @@
+# Host test and tool binaries
+tests/host/test_dsp
+tests/host/test_app
+tools/replay/replay
+*.o
+
+# Python
+__pycache__/
+*.pyc
+
+# Arduino / editor clutter
+build/
+.vscode/
+.DS_Store
