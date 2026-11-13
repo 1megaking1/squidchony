@@ -4,10 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Radar Chrono Remote</title>
-<!-- Web fonts are optional: on the real chrono there is no internet, so the page falls back to system fonts. -->
+<!-- fonts:begin -->
+<!-- Web fonts are optional: on the real chrono there is no internet, so the page falls back to system fonts.
+     tools/make_web_header.py drops this block when it packs the page into the firmware. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<!-- fonts:end -->
 <style>
 /* Base reset */
 :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -71,6 +74,7 @@ h2 { font: 600 16px/1.2 var(--font-ui); margin: 0; text-wrap: balance; }
 .brand svg circle { fill: var(--accent); stroke: none; }
 .link-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-variant-numeric: tabular-nums; }
 .link-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
+.link-pill .dot.off { background: var(--warn); }
 .demo { margin: 0; font-size: 13px; color: var(--ink-2); background: var(--accent-wash); border-radius: 10px; padding: 9px 12px; }
 .demo strong { color: var(--ink); }
 
@@ -80,6 +84,7 @@ h2 { font: 600 16px/1.2 var(--font-ui); margin: 0; text-wrap: balance; }
 .armed { display: inline-flex; align-items: center; gap: 6px; }
 .armed i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; }
 .armed.busy i { background: var(--warn); }
+.armed.idle i { background: var(--muted); }
 .readout-value { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; font-family: var(--font-read); font-weight: 600; font-size: clamp(64px, 21vw, 96px); line-height: 0.95; }
 .readout-value .unit { font-size: 24px; font-weight: 500; color: var(--lcd-dim); }
 .readout-meta { margin-top: 6px; font-size: 14px; color: var(--lcd-dim); font-variant-numeric: tabular-nums; }
@@ -141,6 +146,11 @@ tr:last-child td { border-bottom: 0; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.inline-input { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.inline-input input { width: 7rem; font: 600 16px var(--font-ui); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.inline-input input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.inline-input span { color: var(--muted); font-size: 14px; }
 
 /* settings */
 .settings { display: grid; gap: 14px; margin-top: 10px; }
@@ -194,10 +204,10 @@ tr:last-child td { border-bottom: 0; }
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2.2"></circle><path d="M5 12.5a6.5 6.5 0 0 1 6.5 6.5"></path><path d="M5 7a12 12 0 0 1 12 12"></path></svg>
       Chrono
     </div>
-    <div class="link-pill" title="Demo connection"><span class="dot" aria-hidden="true"></span>Connected · CHRONO-7F2A · 192.168.4.1</div>
+    <div class="link-pill" id="linkPill" title="Demo connection"><span class="dot" id="linkDot" aria-hidden="true"></span><span id="linkText">Connected · CHRONO-7F2A · 192.168.4.1</span></div>
   </header>
 
-  <p class="demo"><strong>Demo with simulated shots.</strong> The first string is example data. On the real chrono, the Pico serves this page over its own Wi-Fi, so it works with no internet or cell signal.</p>
+  <p class="demo" id="demoNote"><strong>Demo with simulated shots.</strong> The first string is example data. On the real chrono, the Pico serves this page over its own Wi-Fi, so it works with no internet or cell signal.</p>
 
   <section class="readout" aria-live="polite" aria-atomic="true">
     <div class="readout-top">
@@ -239,6 +249,7 @@ tr:last-child td { border-bottom: 0; }
       <div class="btn-row">
         <button class="btn small" id="deleteLast" type="button">Delete last</button>
         <button class="btn small" id="exportCsv" type="button">Export CSV</button>
+        <a class="btn small" id="wavLink" href="/api/lastshot.wav" hidden>Last shot (WAV)</a>
       </div>
     </div>
     <div class="table-wrap">
@@ -284,7 +295,27 @@ tr:last-child td { border-bottom: 0; }
         </div>
         <p class="hint">Higher catches weaker echoes (foam darts) but is more likely to trigger on things moving nearby.</p>
       </fieldset>
+      <fieldset class="setting">
+        <legend>Mounting</legend>
+        <div class="seg">
+          <input type="radio" name="mount" id="mountDown" value="downrange" checked><label for="mountDown">Downrange</label>
+          <input type="radio" name="mount" id="mountBarrel" value="barrel"><label for="mountBarrel">On the barrel</label>
+        </div>
+        <p class="hint" id="mountHint">Stand the chrono a few feet in front of the muzzle, aimed back at it, a little below the line of fire.</p>
+      </fieldset>
+      <div class="setting" id="distRow">
+        <label class="k" for="distFt">Muzzle to chrono</label>
+        <div class="inline-input"><input id="distFt" type="number" inputmode="decimal" min="1" max="20" step="0.5" value="3"><span>ft</span></div>
+        <p class="hint">Used to work back from the speed at the chrono to the muzzle.</p>
+      </div>
+      <label class="switch" for="autoRead">Auto read (no need to hold READ)<input type="checkbox" id="autoRead"><span aria-hidden="true"></span></label>
+      <div class="setting" id="calRow" hidden>
+        <label class="k" for="calRef">Calibrate against another chrono</label>
+        <div class="inline-input"><input id="calRef" type="number" inputmode="decimal" step="0.1" placeholder="Its average"><span id="calUnit">fps</span><button class="btn small" id="calGo" type="button">Calibrate</button></div>
+        <p class="hint">Shoot a string through both, enter the other chrono's average for the same shots, and later readings are scaled to match. Factor now: <span id="calNow">1.0000</span>.</p>
+      </div>
       <label class="switch" for="wake">Keep screen on<input type="checkbox" id="wake"><span aria-hidden="true"></span></label>
+      <p class="hint" id="diag" hidden></p>
     </div>
   </section>
 
@@ -296,9 +327,9 @@ tr:last-child td { border-bottom: 0; }
   <section class="card" aria-labelledby="howTitle">
     <h2 id="howTitle">How the phone connects</h2>
     <ol class="steps">
-      <li>Turn the chrono on. It starts its own Wi-Fi network, <b>CHRONO-7F2A</b>.</li>
+      <li>Turn the chrono on. It starts its own Wi-Fi network, <b id="howSsid">CHRONO-7F2A</b>.</li>
       <li>On the iPhone, open Settings, then Wi-Fi, and join it. It will say <b>No Internet Connection</b>. That is expected.</li>
-      <li>Open Safari to <span class="mono">192.168.4.1</span>, or add it to your Home Screen once. No app, internet or cell service needed.</li>
+      <li>Open Safari to <span class="mono">192.168.4.1</span> (or <span class="mono">chrono.local</span>), or add it to your Home Screen once. No app, internet or cell service needed.</li>
     </ol>
   </section>
 </div>
@@ -316,9 +347,10 @@ tr:last-child td { border-bottom: 0; }
 <div class="sheet" id="sheet" hidden>
   <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <h2 id="sheetTitle">Export CSV</h2>
-    <p class="hint">On the real chrono this saves a file to the Files app. In this demo, copy the text.</p>
+    <p class="hint" id="sheetHint">On the real chrono this saves a file to the Files app. In this demo, copy the text.</p>
     <textarea id="csvText" readonly aria-label="CSV data"></textarea>
     <div class="btn-row">
+      <a class="btn primary" id="csvDownload" href="/api/export.csv" download="chrono.csv" hidden>Download file</a>
       <button class="btn primary" id="copyCsv" type="button">Copy CSV</button>
       <button class="btn" id="closeSheet" type="button">Close</button>
     </div>
@@ -350,7 +382,7 @@ tr:last-child td { border-bottom: 0; }
   const uniform = (a, b) => a + (b - a) * rnd();
 
   const state = {
-    proj: 'paintball', units: 'fps', reading: 'muzzle', sens: 'normal',
+    proj: 'paintball', units: 'fps', reading: 'muzzle', sens: 'normal', mount: 'downrange',
     current: { name: 'Marker A, 0.68 First Strike', proj: 'paintball', shots: [] },
     earlier: [],
     stringCount: 2,
@@ -364,8 +396,12 @@ tr:last-child td { border-bottom: 0; }
     return { v: p.mean + meanShift + gauss() * p.sd * sdScale + gauss() * noise, sig, t };
   }
 
+  // Served by the chrono itself (or opened with ?live=1): real data instead of the demo.
+  const ON_DEVICE = /^(192\.168\.4\.1|chrono\.local)(:\d+)?$/.test(location.host) || /[?&]live=1\b/.test(location.search);
+  if (ON_DEVICE) state.current = { id: null, name: 'Connecting…', proj: 'paintball', shots: [] };
+
   // Example data: an earlier string before a regulator tune, then the current string (3 singles + a 5-shot burst).
-  (function seed() {
+  if (!ON_DEVICE) (function seed() {
     const now = Date.now();
     const old = [];
     for (let i = 0; i < 10; i++) old.push(makeShot('paintball', now - 900000 + i * 7000, -5, 2));
@@ -392,13 +428,17 @@ tr:last-child td { border-bottom: 0; }
   const signed = (x) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(decimals());
 
   function atChrono(v, proj) { const p = PROJ[proj]; return v * Math.exp(-p.k * p.chronoFt / FT_PER_M); }
-  function shown(v, proj) {
-    const x = state.reading === 'chrono' ? atChrono(v, proj) : v;
+  // A shot's speed in the chosen reading and units. The chrono sends its own at-chrono speed;
+  // demo shots only have a muzzle speed, so the drag model works that out.
+  function shown(s, str) {
+    const x = state.reading === 'chrono' ? (s.vc !== undefined ? s.vc : atChrono(s.v, str.proj)) : s.v;
     return state.units === 'ms' ? x * 0.3048 : x;
   }
+  // Flags from the chrono: 1 weak echo, 16 radar far off the line of fire, 32 track did not fit.
+  const isWeak = (s) => (s.flags !== undefined ? (s.flags & (1 | 16 | 32)) !== 0 : s.sig < WEAK_DB);
 
   function stats(str) {
-    const xs = str.shots.map((s) => shown(s.v, str.proj));
+    const xs = str.shots.map((s) => shown(s, str));
     const n = xs.length;
     if (!n) return { n: 0, xs };
     const mean = xs.reduce((a, b) => a + b, 0) / n;
@@ -437,11 +477,11 @@ tr:last-child td { border-bottom: 0; }
     }
     const st = stats(state.current);
     const last = shots[shots.length - 1];
-    const v = shown(last.v, state.current.proj);
+    const v = shown(last, state.current);
     $('lastValue').textContent = fmt(v);
     let meta = `Shot ${shots.length} · signal ${Math.round(last.sig)} dB`;
     if (st.n > 1) meta += ` · ${signed(v - st.mean)} vs avg`;
-    if (last.sig < WEAK_DB) meta += ' · weak signal';
+    if (isWeak(last)) meta += ' · weak signal';
     $('lastMeta').textContent = meta;
     if (flash) {
       const box = $('readoutValue');
@@ -546,7 +586,7 @@ tr:last-child td { border-bottom: 0; }
     for (let i = 0; i < st.n; i++) {
       const isLast = i === st.n - 1;
       const cx = x(i), cy = y(st.xs[i]);
-      svg.append(svgEl('circle', { cx, cy, r: isLast ? 5.5 : 4 }, shots[i].sig < WEAK_DB ? 'pt weak' : 'pt'));
+      svg.append(svgEl('circle', { cx, cy, r: isLast ? 5.5 : 4 }, isWeak(shots[i]) ? 'pt weak' : 'pt'));
       const hit = svgEl('circle', { cx, cy, r: 13, tabindex: 0, 'aria-label': `Shot ${i + 1}: ${fmt(st.xs[i])} ${unitLabel()}, signal ${Math.round(shots[i].sig)} dB` }, 'hit');
       const show = () => showTip(i, cx, cy, st.xs[i], shots[i].sig);
       hit.addEventListener('pointerenter', show);
@@ -609,7 +649,7 @@ tr:last-child td { border-bottom: 0; }
       tr.append(el('td', 'num', fmt(st.xs[i])));
       tr.append(el('td', 'num', st.n > 1 ? signed(st.xs[i] - st.mean) : '—'));
       const sigCell = el('td', '', `${Math.round(str.shots[i].sig)} dB`);
-      if (str.shots[i].sig < WEAK_DB) sigCell.append(weakFlag());
+      if (isWeak(str.shots[i])) sigCell.append(weakFlag());
       tr.append(sigCell);
       body.append(tr);
     }
@@ -628,9 +668,9 @@ tr:last-child td { border-bottom: 0; }
       const name = el('div', 'name', str.name);
       name.append(el('span', 'chip', PROJ[str.proj].name));
       row.append(name);
-      const line = st.n
-        ? `${st.n} shots · avg ${fmt(st.mean)} · SD ${st.sd.toFixed(state.units === 'ms' ? 2 : 1)} · ES ${fmt(st.es)} ${unitLabel()}`
-        : 'No shots';
+      let line = 'No shots';
+      if (st.n === 1) line = `1 shot · ${fmt(st.mean)} ${unitLabel()}`;
+      else if (st.n) line = `${st.n} shots · avg ${fmt(st.mean)} · SD ${st.sd.toFixed(state.units === 'ms' ? 2 : 1)} · ES ${fmt(st.es)} ${unitLabel()}`;
       row.append(el('div', 'line', line));
       box.append(row);
     }
@@ -680,9 +720,10 @@ tr:last-child td { border-bottom: 0; }
     return true;
   }
 
-  $('fire').addEventListener('click', () => fireOne(false));
+  $('fire').addEventListener('click', () => (live.on ? toggleMeasure() : fireOne(false)));
 
   $('burst').addEventListener('click', () => {
+    if (live.on) { liveDeleteLast(); return; }
     const p = PROJ[state.current.proj];
     setBusy(true);
     let fired = 0, missed = 0;
@@ -707,12 +748,14 @@ tr:last-child td { border-bottom: 0; }
   }
 
   $('newString').addEventListener('click', () => {
+    if (live.on) { liveCmd({ c: 'new' }, 'New string started.'); return; }
     const cur = state.current;
     if (!cur.shots.length) { toast('This string is already empty.'); return; }
     startNewString(`Saved "${cur.name}" (${cur.shots.length} shots). New string started.`);
   });
 
   $('deleteLast').addEventListener('click', () => {
+    if (live.on) { liveDeleteLast(); return; }
     const shots = state.current.shots;
     if (!shots.length) { toast('No shots to delete.'); return; }
     const removed = shots.pop();
@@ -721,7 +764,13 @@ tr:last-child td { border-bottom: 0; }
     toast(`Deleted shot ${n}.`, () => { state.current.shots.push(removed); renderAll(); });
   });
 
-  $('stringName').addEventListener('input', (e) => { state.current.name = e.target.value || 'Untitled string'; });
+  $('stringName').addEventListener('input', (e) => {
+    state.current.name = e.target.value || 'Untitled string';
+    if (!live.on) return;
+    clearTimeout(live.nameTimer);
+    const name = e.target.value.trim();
+    if (name) live.nameTimer = setTimeout(() => liveCmd({ c: 'name', id: state.current.id, v: name }), 700);
+  });
 
   function bindRadios(name, apply) {
     for (const input of document.querySelectorAll(`input[name="${name}"]`)) {
@@ -729,11 +778,13 @@ tr:last-child td { border-bottom: 0; }
       input.addEventListener('change', () => { if (input.checked) apply(input.value); });
     }
   }
-  bindRadios('units', (v) => { state.units = v; saveSettings(); renderAll(); });
-  bindRadios('reading', (v) => { state.reading = v; saveSettings(); renderAll(); });
-  bindRadios('sens', (v) => { state.sens = v; saveSettings(); });
+  bindRadios('units', (v) => { state.units = v; saveSettings(); renderAll(); updateMountUi(); sendSetting('units', v); });
+  bindRadios('reading', (v) => { state.reading = v; saveSettings(); renderAll(); sendSetting('reading', v); });
+  bindRadios('sens', (v) => { state.sens = v; saveSettings(); sendSetting('sens', v); });
+  bindRadios('mount', (v) => { state.mount = v; updateMountUi(); sendSetting('mount', v); });
   bindRadios('proj', (v) => {
     state.proj = v;
+    if (live.on) { sendSetting('proj', v); return; }  // the chrono starts the new string
     if (state.current.shots.length) {
       startNewString(`New string started for ${PROJ[v].name.toLowerCase()}s.`);
     } else {
@@ -754,8 +805,15 @@ tr:last-child td { border-bottom: 0; }
     }
     return rows.join('\n');
   }
-  $('exportCsv').addEventListener('click', () => {
-    $('csvText').value = buildCsv();
+  $('exportCsv').addEventListener('click', async () => {
+    if (live.on) {
+      try {
+        const res = await fetch('/api/export.csv', { cache: 'no-store' });
+        $('csvText').value = await res.text();
+      } catch (e) { toast('Could not reach the chrono.'); return; }
+    } else {
+      $('csvText').value = buildCsv();
+    }
     $('sheet').hidden = false;
     $('copyCsv').focus();
   });
@@ -792,7 +850,190 @@ tr:last-child td { border-bottom: 0; }
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 120); });
   document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.chart')) hideTip(); });
 
+  // ---------------------------------------------------------------- live mode
+  // When the chrono serves this page, the code below talks to it and the drawing code above
+  // shows its data. Anywhere else (a saved file, the hosted demo) none of this runs.
+  const live = { on: false, rev: -1, srev: -1, wantArm: false, armTimer: null, nameTimer: null, lastSet: 0, failures: 0, polling: false };
+
+  async function api(path, params) {
+    const q = params ? `?${new URLSearchParams(params)}` : '';
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 4000);
+    try {
+      const res = await fetch(path + q, { cache: 'no-store', signal: ctl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Shots arrive as [muzzle_fps, chrono_fps, signal_db, flags, t_ms, sigma_fps, unix_s].
+  function fromDevice(str) {
+    return {
+      id: str.id, name: str.name, proj: str.proj, mount: str.mount,
+      shots: str.shots.map((a) => ({ v: a[0], vc: a[1], sig: a[2], flags: a[3], t: a[4], sd: a[5], time: a[6] })),
+    };
+  }
+
+  async function loadData(full) {
+    const beforeId = state.current.id;
+    const before = state.current.shots.length;
+    const d = await api('/api/data', full ? null : { cur: 1 });
+    const strings = d.strings.map(fromDevice);
+    if (!strings.length) return;
+    if (full) {
+      state.current = strings.find((x) => x.id === d.cur) || strings[0];
+      state.earlier = strings.filter((x) => x !== state.current && x.shots.length);
+    } else {
+      if (strings[0].id !== beforeId) return loadData(true);
+      state.current = strings[0];
+    }
+    live.rev = d.rev;
+    live.srev = d.srev;
+    renderAll(state.current.id === beforeId && state.current.shots.length > before);
+  }
+
+  function setChecked(name, value) {
+    for (const input of document.querySelectorAll(`input[name="${name}"]`)) input.checked = input.value === value;
+  }
+
+  function setArmedUi(armed, busy) {
+    $('armed').classList.toggle('busy', busy);
+    $('armed').classList.toggle('idle', !armed && !busy);
+    $('armedText').textContent = busy ? 'Measuring' : armed ? 'Armed' : 'Idle';
+  }
+
+  function updateMountUi() {
+    const barrel = state.mount === 'barrel';
+    $('distRow').hidden = barrel;
+    $('mountHint').textContent = barrel
+      ? 'Strap the chrono beside the barrel, aimed straight downrange, its front level with the muzzle.'
+      : 'Stand the chrono a few feet in front of the muzzle, aimed back at it, a little below the line of fire.';
+    $('calUnit').textContent = unitLabel();
+  }
+
+  function applySettings(set) {
+    // Leave the controls alone just after the user changed one; the chrono may not have caught up.
+    if (Date.now() - live.lastSet < 1500) return;
+    let redraw = false;
+    for (const key of ['units', 'reading', 'sens', 'proj', 'mount']) {
+      if (set[key] && state[key] !== set[key]) { state[key] = set[key]; setChecked(key, set[key]); redraw = true; }
+    }
+    if (document.activeElement !== $('distFt')) $('distFt').value = set.dist_ft;
+    $('autoRead').checked = !!set.auto;
+    $('calNow').textContent = Number(set.cal).toFixed(4);
+    updateMountUi();
+    if (redraw) renderAll();
+  }
+
+  function applyState(st) {
+    const batt = st.batt_pct >= 0 ? ` · battery ${st.batt_low ? 'low' : `${st.batt_pct}%`}` : '';
+    $('linkText').textContent = `Connected · ${st.ssid}${batt}`;
+    $('linkDot').classList.remove('off');
+    $('linkPill').title = `Firmware ${st.fw} at ${location.host}`;
+    $('howSsid').textContent = st.ssid;
+    setArmedUi(st.armed, st.busy);
+    applySettings(st.settings);
+    const d = st.dsp;
+    $('diag').hidden = false;
+    $('diag').textContent = `Firmware ${st.fw} · noise floor ${d.noise_db.toFixed(0)} dB · ${d.lost} weak echo${d.lost === 1 ? '' : 'es'} · ${d.gaps} sampling gap${d.gaps === 1 ? '' : 's'} since power-on`;
+  }
+
+  async function poll() {
+    if (live.polling) return;
+    live.polling = true;
+    try {
+      const st = await api('/api/state');
+      live.failures = 0;
+      applyState(st);
+      if (st.srev !== live.srev) await loadData(true);
+      else if (st.rev !== live.rev) await loadData(false);
+    } catch (e) {
+      if (++live.failures >= 3) {
+        $('linkText').textContent = "Not connected: join the chrono's Wi-Fi";
+        $('linkDot').classList.add('off');
+      }
+    } finally {
+      live.polling = false;
+    }
+  }
+
+  async function liveCmd(params, okText) {
+    try {
+      const r = await api('/api/cmd', params);
+      if (!r.ok) toast(r.msg || 'The chrono did not accept that.');
+      else if (okText) toast(okText);
+      poll();
+      return r;
+    } catch (e) {
+      toast('Could not reach the chrono.');
+      return null;
+    }
+  }
+
+  async function liveDeleteLast() {
+    const r = await liveCmd({ c: 'del' });
+    if (r && r.ok) toast('Deleted the last shot.', () => liveCmd({ c: 'undel' }));
+  }
+
+  function sendSetting(key, value) {
+    if (!live.on) return;
+    live.lastSet = Date.now();
+    api('/api/set', { [key]: value }).then((r) => {
+      if (!r.ok) toast('The chrono did not accept that setting.');
+      poll();
+    }, () => toast('Could not reach the chrono.'));
+  }
+
+  function updateMeasureButton() { $('fire').textContent = live.wantArm ? 'Stop measuring' : 'Measure'; }
+
+  function toggleMeasure() {
+    live.wantArm = !live.wantArm;
+    updateMeasureButton();
+    clearInterval(live.armTimer);
+    live.armTimer = null;
+    liveCmd({ c: 'arm', v: live.wantArm ? 1 : 0 });
+    // The chrono stops on its own a minute after the last request, in case the phone wanders off.
+    if (live.wantArm) live.armTimer = setInterval(() => liveCmd({ c: 'arm', v: 1 }), 20000);
+  }
+
+  $('distFt').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    if (v >= 1 && v <= 20) sendSetting('dist_ft', v.toFixed(1));
+    else toast('Enter a distance from 1 to 20 ft.');
+  });
+  $('autoRead').addEventListener('change', (e) => {
+    if (live.on) sendSetting('auto', e.target.checked ? 1 : 0);
+    else toast(e.target.checked ? 'On the chrono, shots now count without holding READ.' : 'Hold READ while shooting.');
+  });
+  $('calGo').addEventListener('click', () => {
+    const x = parseFloat($('calRef').value);
+    if (!(x > 0)) { toast("Enter the other chrono's average first."); return; }
+    const mps = state.units === 'ms' ? x : x * 0.3048;
+    liveCmd({ c: 'cal', v: mps.toFixed(3) }, 'Calibrated. Shots from now on use the new factor.');
+  });
+
+  async function startLive() {
+    live.on = true;
+    $('demoNote').hidden = true;
+    $('burst').textContent = 'Delete last';
+    updateMeasureButton();
+    $('wavLink').hidden = false;
+    $('calRow').hidden = false;
+    $('csvDownload').hidden = false;
+    $('sheetHint').textContent = 'Download saves chrono.csv (in Safari it goes to Downloads in the Files app), or copy the text.';
+    $('linkText').textContent = 'Connecting…';
+    $('linkDot').classList.add('off');
+    setArmedUi(false, false);
+    api('/api/cmd', { c: 'time', v: String(Date.now()) }).catch(() => {});
+    await poll();
+    setInterval(poll, 700);
+  }
+
+  updateMountUi();
   renderAll();
+  if (ON_DEVICE) startLive();
 })();
 </script>
 </body>

@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    name: Host tests (signal processing, settings, shot log)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: make -C tests/host
+      - name: Phone page is packed into the firmware
+        run: python3 tools/make_web_header.py --check
+
+  firmware:
+    name: Compile firmware (Pico 2 W)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install the arduino-pico core and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
+          arduino-cli lib install "Adafruit ST7735 and ST7789 Library" "Adafruit GFX Library"
+      - name: Compile
+        run: arduino-cli compile --fqbn rp2040:rp2040:rpipico2w --warnings default --output-dir build firmware/squidchrony
+      - name: Keep the firmware file
+        uses: actions/upload-artifact@v4
+        with:
+          name: squidchrony-firmware
+          path: build/*.uf2
+          if-no-files-found: warn

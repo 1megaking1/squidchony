@@ -33,6 +33,10 @@ constexpr int PIN_SMPS_MODE = 64 + 1;
 // ---- Analog front end -------------------------------------------------------------------
 constexpr float ADC_VREF = 3.3f;
 constexpr float BATT_DIVIDER = 5.7f;      // (470k + 100k) / 100k
+// The divider sits after the reverse-polarity Schottky (1N5817), which drops about this
+// much at the chrono's current. Set to 0 if the divider is wired straight to the battery.
+constexpr float BATT_DIODE_V = 0.25f;
+constexpr float BATT_LOW_CELL_V = 3.3f;   // warn below this per cell (2S pack)
 constexpr uint16_t CLIP_LO = 40;          // op-amp output rails seen through the divider
 constexpr uint16_t CLIP_HI = 3680;
 

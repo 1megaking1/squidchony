@@ -256,6 +256,7 @@ ShotTracker::Result ShotTracker::finish(const Config& cfg, ShotResult* out) {
   int n = n_;
   bool truncated = truncated_;
   if (n < cfg.min_frames || n < 3) {
+    if (n >= 3) lost_++;
     clearTrack();
     return NONE;
   }
@@ -269,6 +270,8 @@ ShotTracker::Result ShotTracker::finish(const Config& cfg, ShotResult* out) {
     out->strong_sample = t_[strong];
     if (truncated) out->flags |= SHOT_TRUNCATED;
     holdoff_ = cfg.holdoff_frames;
+  } else {
+    lost_++;
   }
   clearTrack();
   return ok ? SHOT : NONE;
@@ -520,17 +523,77 @@ int TrackFitter::markOutliers(const Cand& best) {
   return marked;
 }
 
-// Search the whole (t_c, tau) range, cutting frames per candidate by angle.
+// Search the whole (t_c, tau) range, cutting frames per candidate by angle. The cost has
+// narrow valleys (a frame switching between used and left out moves it in steps), so the
+// best few local minima of the coarse grid are each refined, and the best of those wins.
 void TrackFitter::solveFree(Cand* best) {
   fixed_ = false;
-  const int NTC = 41, NTAU = 16;
-  searchGrid(tc_lo_, tc_hi_, NTC, 0.0f, tau_max_, NTAU, best);
-  if (best->chi2 >= kHugeChi2) return;
   dtc_ = (tc_hi_ - tc_lo_) / (NTC - 1);
   dtau_ = tau_max_ / (NTAU - 1);
-  float dtc = dtc_, dtau = dtau_;
-  for (int pass = 0; pass < 3; pass++) {
-    if (pass < 2) markOutliers(*best);
+  Cand c;
+  for (int i = 0; i < NTC; i++) {
+    for (int j = 0; j < NTAU; j++) {
+      c.tc = tc_lo_ + dtc_ * i;
+      c.tau = dtau_ * j;
+      evaluate(&c);
+      grid_[i * NTAU + j] = c.chi2;
+    }
+  }
+  // Local minima of the grid, best first.
+  constexpr int STARTS = 4;
+  int start[STARTS];
+  int nstart = 0;
+  for (int i = 0; i < NTC; i++) {
+    for (int j = 0; j < NTAU; j++) {
+      float v = grid_[i * NTAU + j];
+      if (v >= kHugeChi2) continue;
+      bool minimum = true;
+      for (int di = -1; di <= 1 && minimum; di++)
+        for (int dj = -1; dj <= 1; dj++) {
+          int a = i + di, b = j + dj;
+          if ((di || dj) && a >= 0 && a < NTC && b >= 0 && b < NTAU && grid_[a * NTAU + b] < v) {
+            minimum = false;
+            break;
+          }
+        }
+      if (!minimum) continue;
+      int k;
+      if (nstart < STARTS) {
+        k = nstart++;
+      } else if (v < grid_[start[STARTS - 1]]) {
+        k = STARTS - 1;
+      } else {
+        continue;
+      }
+      start[k] = i * NTAU + j;
+      for (; k > 0 && grid_[start[k]] < grid_[start[k - 1]]; k--) {
+        int t = start[k];
+        start[k] = start[k - 1];
+        start[k - 1] = t;
+      }
+    }
+  }
+  best->chi2 = kHugeChi2;
+  if (!nstart) return;
+  for (int s = 0; s < nstart; s++) {
+    Cand r;
+    r.tc = tc_lo_ + dtc_ * (start[s] / NTAU);
+    r.tau = dtau_ * (start[s] % NTAU);
+    float dtc = dtc_, dtau = dtau_;
+    for (int pass = 0; pass < 3; pass++) {
+      float c_tc = r.tc, c_tau = r.tau;
+      searchGrid(c_tc - 1.5f * dtc, c_tc + 1.5f * dtc, 7, c_tau - 1.5f * dtau, c_tau + 1.5f * dtau,
+                 7, &r);
+      dtc *= 0.5f;
+      dtau *= 0.5f;
+    }
+    if (r.chi2 < best->chi2) *best = r;
+  }
+  if (best->chi2 >= kHugeChi2) return;
+  // Drop outliers around the winner and settle it.
+  float dtc = dtc_ * 0.25f, dtau = dtau_ * 0.25f;
+  for (int pass = 0; pass < 2; pass++) {
+    markOutliers(*best);
     float c_tc = best->tc, c_tau = best->tau;
     searchGrid(c_tc - 1.5f * dtc, c_tc + 1.5f * dtc, 7, c_tau - 1.5f * dtau, c_tau + 1.5f * dtau,
                7, best);

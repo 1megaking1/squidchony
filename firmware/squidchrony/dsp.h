@@ -217,6 +217,7 @@ class TrackFitter {
   void evaluate(Cand* c);
   void searchGrid(float tc_lo, float tc_hi, int ntc, float tau_lo, float tau_hi, int ntau,
                   Cand* best);
+  static constexpr int NTC = 41, NTAU = 16;  // coarse geometry grid
   void solveFree(Cand* best);
   void fixFrames(const Cand& g);
   void solveFixed(Cand* best);
@@ -263,6 +264,7 @@ class TrackFitter {
   float tmp_[MAX_TRACK];
   uint8_t ok_[MAX_TRACK];   // 0 = rejected as an outlier
   uint8_t use_[MAX_TRACK];  // frame set of the fixed-set search
+  float grid_[NTC * NTAU];  // coarse-grid costs
   bool fixed_ = false;      // search over a fixed frame set instead of per-candidate cuts
 };
 
@@ -274,6 +276,9 @@ class ShotTracker {
   void setSampleSource(const SampleSource* src) { src_ = src; }
   bool active() const { return n_ > 0; }
   float trackFreq() const { return n_ > 0 ? f_last_ : 0.0f; }
+  // Tracks of 3+ frames that did not become shots (too short to measure, or no fit):
+  // usually an echo too weak to follow.
+  uint32_t lost() const { return lost_; }
   // Feed one frame (in order). center_sample is the frame-center index in the decimated stream.
   // While armed is false nothing new starts, and a track in progress is finished.
   // Returns SHOT and fills *out when a shot is complete, or REJECTED when a track lasted
@@ -290,6 +295,7 @@ class ShotTracker {
   void clearTrack();
 
   const SampleSource* src_ = nullptr;
+  uint32_t lost_ = 0;
   int n_ = 0;
   int miss_ = 0;
   int holdoff_ = 0;
