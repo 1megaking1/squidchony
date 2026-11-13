@@ -303,6 +303,12 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
         </div>
         <p class="hint" id="mountHint">Stand the chrono a few feet in front of the muzzle, aimed back at it, a little below the line of fire.</p>
       </fieldset>
+      <div class="setting" id="barrelRow" hidden>
+        <span class="k">Beside the barrel</span>
+        <div class="inline-input"><input id="offsetMm" type="number" inputmode="decimal" min="5" max="300" step="1" value="40" aria-label="Bore line to antenna, mm"><span>mm, bore line to the middle of the antenna</span></div>
+        <div class="inline-input"><input id="aheadMm" type="number" inputmode="decimal" min="-100" max="200" step="1" value="20" aria-label="Muzzle past the antenna, mm"><span>mm the muzzle sticks out past the antenna</span></div>
+        <p class="hint">Measure these once for your mount. They set how much the reading close to the muzzle is corrected for the angle.</p>
+      </div>
       <div class="setting" id="distRow">
         <label class="k" for="distFt">Muzzle to chrono</label>
         <div class="inline-input"><input id="distFt" type="number" inputmode="decimal" min="1" max="20" step="0.5" value="3"><span>ft</span></div>
@@ -907,6 +913,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
   function updateMountUi() {
     const barrel = state.mount === 'barrel';
     $('distRow').hidden = barrel;
+    $('barrelRow').hidden = !barrel;
     $('mountHint').textContent = barrel
       ? 'Strap the chrono beside the barrel, aimed straight downrange, its front level with the muzzle.'
       : 'Stand the chrono a few feet in front of the muzzle, aimed back at it, a little below the line of fire.';
@@ -921,6 +928,8 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
       if (set[key] && state[key] !== set[key]) { state[key] = set[key]; setChecked(key, set[key]); redraw = true; }
     }
     if (document.activeElement !== $('distFt')) $('distFt').value = set.dist_ft;
+    if (document.activeElement !== $('offsetMm')) $('offsetMm').value = Math.round(set.offset_mm);
+    if (document.activeElement !== $('aheadMm')) $('aheadMm').value = Math.round(set.ahead_mm);
     $('autoRead').checked = !!set.auto;
     $('calNow').textContent = Number(set.cal).toFixed(4);
     updateMountUi();
@@ -1002,6 +1011,16 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     const v = parseFloat(e.target.value);
     if (v >= 1 && v <= 20) sendSetting('dist_ft', v.toFixed(1));
     else toast('Enter a distance from 1 to 20 ft.');
+  });
+  $('offsetMm').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    if (v >= 5 && v <= 300) sendSetting('offset_mm', v.toFixed(0));
+    else toast('Enter 5 to 300 mm.');
+  });
+  $('aheadMm').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    if (v >= -100 && v <= 200) sendSetting('ahead_mm', v.toFixed(0));
+    else toast('Enter -100 to 200 mm.');
   });
   $('autoRead').addEventListener('change', (e) => {
     if (live.on) sendSetting('auto', e.target.checked ? 1 : 0);
