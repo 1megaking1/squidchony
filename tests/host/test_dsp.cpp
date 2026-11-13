@@ -10,6 +10,7 @@
 //   make -C tests/host            run all checks
 //   ./test_dsp 200                more trials per row
 //   ./test_dsp dump <setup> <snr> print the frames of one simulated shot (setup 0-5)
+//   ./test_dsp wav <setup> <snr> <trial> <file.wav>   save one simulated shot as a WAV
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -180,6 +181,8 @@ class VectorSource : public SampleSource {
 };
 
 bool g_use_source = true;
+bool g_keep_hist = false;      // keep the last run's decimated samples (for writeWav)
+std::vector<int16_t> g_hist;
 double g_fit_seconds = 0.0;  // time spent finishing tracks (the fit)
 long g_fit_count = 0, g_fit_frames = 0;
 
@@ -203,6 +206,12 @@ Run runChain(const Setup& p, const std::vector<ShotSpec>& shots, const Scenario&
   hist.reserve(n_raw / FIR_DECIM + 8);
   VectorSource src(&hist);
   tr.setSampleSource(g_use_source ? &src : nullptr);
+  struct Keep {
+    std::vector<int16_t>* h;
+    ~Keep() {
+      if (g_keep_hist) g_hist = *h;
+    }
+  } keep{&hist};
   size_t next_frame_end = WIN;
   Run out;
   for (long i = 0; i < n_raw; i++) {
@@ -386,6 +395,46 @@ void checkRows(const Setup& p, const std::vector<SweepRow>& rows, double from_db
 }
 
 
+// Write the decimated samples of one simulated shot as a WAV, the way the firmware's
+// /api/lastshot.wav does (50 kS/s, 16-bit mono), and print what the chain found.
+int writeWav(int which, double snr, int trial, const char* path) {
+  const Setup& p = kSetups[which];
+  std::mt19937 rng(trialSeed(which, snr, trial));
+  Config cfg = configFor(p);
+  ShotSpec s = randomShot(p, 0.03, rng);
+  Scenario sc;
+  sc.snr_db = snr;
+  g_keep_hist = true;
+  Run run = runChain(p, {s}, sc, cfg, rng);
+  g_keep_hist = false;
+  FILE* f = std::fopen(path, "wb");
+  if (!f) return 1;
+  auto put16 = [&](uint32_t v) { uint8_t b[2] = {(uint8_t)v, (uint8_t)(v >> 8)}; std::fwrite(b, 1, 2, f); };
+  auto put32 = [&](uint32_t v) { put16(v & 0xffff); put16(v >> 16); };
+  const uint32_t n = (uint32_t)g_hist.size(), rate = 50000;
+  std::fwrite("RIFF", 1, 4, f);
+  put32(36 + 2 * n);
+  std::fwrite("WAVEfmt ", 1, 8, f);
+  put32(16);
+  put16(1);
+  put16(1);
+  put32(rate);
+  put32(rate * 2);
+  put16(2);
+  put16(16);
+  std::fwrite("data", 1, 4, f);
+  put32(2 * n);
+  for (int16_t x : g_hist) put16((uint16_t)x);
+  std::fclose(f);
+  Truth tr = truthFor(p, s);
+  std::printf("wrote %s (%u samples): %s, true speed at the radar %.2f fps, muzzle %.2f fps\n", path, n,
+              p.name, tr.v_pass / FPS, tr.v_muzzle / FPS);
+  for (const Found& fd : run.shots)
+    std::printf("the simulation's own chain: at the chrono %.2f fps, muzzle %.2f fps\n",
+                fd.r.v_chrono_mps / FPS, fd.r.v_muzzle_mps / FPS);
+  return 0;
+}
+
 int dump(int which, double snr, int trial) {
   const Setup& p = kSetups[which];
   std::mt19937 rng(trialSeed(which, snr, trial));
@@ -437,6 +486,8 @@ int dump(int which, double snr, int trial) {
 
 int main(int argc, char** argv) {
   if (getenv("NO_REMEASURE")) g_use_source = false;
+  if (argc >= 6 && std::strcmp(argv[1], "wav") == 0)
+    return writeWav(std::atoi(argv[2]), std::atof(argv[3]), std::atoi(argv[4]), argv[5]);
   if (argc >= 2 && std::strcmp(argv[1], "dump") == 0) {
     int which = argc > 2 ? std::atoi(argv[2]) : 0;
     double snr = argc > 3 ? std::atof(argv[3]) : 25.0;

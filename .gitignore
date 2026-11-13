@@ -1,7 +1,7 @@
 # Host test and tool binaries
 tests/host/test_dsp
 tests/host/test_app
-tools/replay/replay
+tests/host/replay
 *.o
 
 # Python

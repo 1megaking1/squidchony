@@ -146,6 +146,11 @@ shots in 64 strings; the oldest strings make room.
 - `make -C tests/host` runs the simulation tests and the settings/shot-log tests.
   `./tests/host/test_dsp dump <setup> <snr> [trial]` prints every frame of one simulated
   shot and each stage of its fit.
+- `./tests/host/replay shot.wav [setting=value ...]` runs a recorded shot (the phone's
+  "Last shot (WAV)") through the same processing as the firmware and prints every frame and
+  the result. Give it the chrono's settings, e.g. `mount=barrel offset_mm=35` or
+  `dist_ft=4 proj=dart`. `./tests/host/test_dsp wav <setup> <snr> <trial> sim.wav` writes a
+  simulated shot in the same format.
 - `python3 tools/mock_chrono.py` serves the phone page with a fake API at
   `http://localhost:8000/?live=1`.
 - After editing `web/chrono-remote.html`, run `python3 tools/make_web_header.py` (CI checks).
@@ -154,7 +159,8 @@ shots in 64 strings; the oldest strings make room.
 ## What to tune with real data
 
 The simulation guesses at the parts that matter most. Once the hardware works, record a few
-shots (`/api/lastshot.wav`) at each distance and projectile, and check:
+shots (`/api/lastshot.wav`) at each distance and projectile, run them through
+`tests/host/replay`, and check:
 
 - **Echo strength** (signal dB on each shot) against the simulation's 15–30 dB at 1 m. It sets
   the gain step and how far away the chrono can sit.

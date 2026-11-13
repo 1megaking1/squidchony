@@ -46,10 +46,12 @@ struct Levels {
 };
 Levels levels();
 
-// SampleSource for the track fit.
+// SampleSource for the track fit (core 1 only). A fit takes tens of milliseconds, so each read
+// also drains the DMA ring first: belt and braces in case an interrupt is late.
 class History : public dsp::SampleSource {
  public:
   bool read(uint32_t first, int count, int16_t* out) const override {
+    acq::service();
     return acq::read(first, count, out);
   }
 };
