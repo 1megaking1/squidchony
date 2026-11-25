@@ -8,20 +8,20 @@ namespace controls {
 namespace {
 
 constexpr uint32_t DEBOUNCE_MS = 25;
-constexpr uint32_t LONG_MS = 700;
 
 struct Button {
   int pin;
-  Event down, up, click, lng;
+  Event down, up, click, lng, off;  // off = NONE: this button has no hold-to-turn-off
   bool stable = false;  // debounced pressed state
   bool raw = false;
   uint32_t raw_since = 0;
   uint32_t down_at = 0;
-  bool long_sent = false;
+  bool off_sent = false;
+  bool ignore = false;  // this press is the one that switched the chrono on: no events
 };
 
-Button read_btn{PIN_BTN_READ, READ_DOWN, READ_UP, READ_CLICK, READ_LONG};
-Button mode_btn{PIN_BTN_MODE, MODE_DOWN, MODE_UP, MODE_CLICK, MODE_LONG};
+Button read_btn{PIN_BTN_READ, READ_DOWN, READ_UP, READ_CLICK, READ_LONG, NONE};
+Button mode_btn{PIN_BTN_MODE, MODE_DOWN, MODE_UP, MODE_CLICK, MODE_LONG, MODE_OFF};
 
 Event queue[8];
 uint8_t q_head = 0, q_tail = 0;
@@ -44,27 +44,41 @@ void update(Button& b, uint32_t now) {
     b.stable = b.raw;
     if (b.stable) {
       b.down_at = now;
-      b.long_sent = false;
+      b.off_sent = false;
+      b.ignore = false;
       push(b.down);
+    } else if (b.ignore) {
+      b.ignore = false;  // released the power-on press: nothing to report
     } else {
       push(b.up);
-      if (!b.long_sent) push(b.click);
+      uint32_t held = now - b.down_at;
+      if (!b.off_sent) push(held < LONG_MS ? b.click : b.lng);
     }
   }
-  if (b.stable && !b.long_sent && now - b.down_at >= LONG_MS) {
-    b.long_sent = true;
-    push(b.lng);
+  if (b.stable && !b.ignore && b.off != NONE && !b.off_sent && now - b.down_at >= OFF_MS) {
+    b.off_sent = true;
+    push(b.off);
   }
+}
+
+void init(Button& b, uint32_t now) {
+  pinMode(b.pin, INPUT_PULLUP);
+  delayMicroseconds(50);  // let the pull-up charge the line
+  b.raw = b.stable = digitalRead(b.pin) == LOW;
+  b.raw_since = b.down_at = now;
+  b.ignore = b.stable;
 }
 
 }  // namespace
 
-void begin() {
-  pinMode(PIN_BTN_READ, INPUT_PULLUP);
-  pinMode(PIN_BTN_MODE, INPUT_PULLUP);
+bool begin() {
+  uint32_t now = millis();
+  init(read_btn, now);
+  init(mode_btn, now);
   pinMode(PIN_LED_READ, OUTPUT);
   pinMode(PIN_LED_MODE, OUTPUT);
   setLeds(false, false);
+  return mode_btn.stable;
 }
 
 Event poll(uint32_t now) {
@@ -76,9 +90,12 @@ Event poll(uint32_t now) {
   return e;
 }
 
-bool readHeld() { return read_btn.stable; }
+bool readHeld() { return read_btn.stable && !read_btn.ignore; }
 bool modeHeld() { return mode_btn.stable; }
-bool modePressedRaw() { return digitalRead(PIN_BTN_MODE) == LOW; }
+
+uint32_t modeHeldMs(uint32_t now) {
+  return mode_btn.stable && !mode_btn.ignore ? now - mode_btn.down_at : 0;
+}
 
 void setLeds(bool read_on, bool mode_on) {
   if ((int)read_on != led_read) {

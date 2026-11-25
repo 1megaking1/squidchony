@@ -16,9 +16,12 @@ struct Live {
   float batt_v = 0;
   int batt_pct = -1;
   bool batt_low = false;
-  bool armed = false;      // measuring now
-  bool held = false;       // READ is held down
-  bool web_armed = false;  // the phone asked to measure
+  bool armed = false;         // measuring now (radar on and settled)
+  bool want_measure = false;  // READ held, auto read, or the phone's switch
+  bool radar_on = false;      // radar and amplifier powered
+  uint32_t off_in_s = 0;      // > 0 while an idle shutdown is coming
+  bool held = false;          // READ is held down
+  bool web_armed = false;     // the phone asked to measure
   bool busy = false;       // a shot is being measured
   int clients = 0;         // phones on the Wi-Fi
   dsptask::Status dsp;
@@ -42,7 +45,8 @@ void clearAll();
 // too few shots or the change would be implausible (over 10%).
 bool calibrate(float ref_mps);
 void webArm(bool on);
-void touch();  // user activity: keeps the screen on
+void touch();     // user activity: keeps the screen on and the chrono from switching off
+void powerOff();  // switch off (after saving) on the next pass through the main loop
 
 const char* ssid();
 

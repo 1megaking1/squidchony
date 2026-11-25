@@ -96,6 +96,7 @@ void handleRoot() {
 }
 
 void handleState() {
+  app::touch();  // the page polls while it is open: someone is using the chrono
   app::Live l = app::live();
   const ShotString& cur = app::shots.current();
   char settings[640];
@@ -107,6 +108,9 @@ void handleState() {
   out.add(",\"armed\":%s,\"held\":%s,\"web_armed\":%s,\"busy\":%s,\"clients\":%d,\"time_set\":%s,",
           l.armed ? "true" : "false", l.held ? "true" : "false", l.web_armed ? "true" : "false",
           l.busy ? "true" : "false", l.clients, app::wallClockS() ? "true" : "false");
+  out.add("\"radar\":\"%s\",\"off_in_s\":%lu,",
+          !l.radar_on ? "off" : (l.want_measure && !l.armed ? "warming" : "on"),
+          (unsigned long)l.off_in_s);
   out.add("\"batt_v\":%.2f,\"batt_pct\":%d,\"batt_low\":%s,", l.batt_v, l.batt_pct,
           l.batt_low ? "true" : "false");
   out.add("\"dsp\":{\"noise_db\":%.1f,\"peak_db\":%.1f,\"peak_hz\":%.0f,\"frames\":%lu,\"shots\":%lu,"
@@ -188,6 +192,9 @@ void handleCmd() {
     uint64_t ms = strtoull(v.c_str(), nullptr, 10);
     ok = ms > 1600000000000ull;
     if (ok) app::setWallClockMs(ms);
+  } else if (c == "off") {
+    app::powerOff();  // the main loop saves and switches off after this reply goes out
+    ok = true;
   } else if (c == "cal") {
     float ref = strtof(v.c_str(), nullptr);
     ok = app::calibrate(ref);

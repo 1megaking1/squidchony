@@ -26,7 +26,8 @@ With arduino-cli: `arduino-cli compile --fqbn rp2040:rp2040:rpipico2w firmware/s
 | `acquisition.*` | core 1 (interrupt) | ADC + DMA, decimation into the 50 kS/s history, battery and level averages |
 | `dsp_task.*` | core 1 | frame loop, tracker, fit; hands shots to core 0 |
 | `dsp.*`, `fir_coeffs.h` | core 1 | the signal processing (plain C++, also built by the host tests) |
-| `squidchrony.ino` | core 0 | setup, buttons, menu, screen model, LEDs, battery, saving |
+| `squidchrony.ino` | core 0 | setup, buttons, menu, screen model, LEDs, battery, saving, switching off |
+| `power.*` | core 0 | when the radar is powered and when the chrono switches itself off (host-tested) |
 | `settings.*`, `shotlog.*` | core 0 | settings, strings of shots, statistics, journal (host-tested) |
 | `storage.*` | core 0 | LittleFS files |
 | `display.*`, `controls.*` | core 0 | ST7789 screen, buttons and LEDs |
@@ -78,6 +79,30 @@ uncertainty, the fitted offset, and flags (weak, drag not measurable, far off th
 poor fit, clipped). One fit takes about 1 ms on a PC, so expect roughly 20–40 ms on the Pico.
 Meanwhile the history keeps filling, and the frame loop catches up afterwards.
 
+### Power
+
+There's no power switch (docs/hardware.md). MODE switches the soft power switch on through a
+diode; the firmware then holds it on with GP12 and lets go of it to switch off. `PowerPolicy`
+(`power.cpp`) makes the decisions and `squidchrony.ino` drives the pins:
+
+- **Switching on.** If MODE is down at power-up, GP12 goes high at once and the splash says
+  "Keep holding MODE". `setup()` waits until MODE has stayed down another 0.4 s before
+  starting Wi-Fi; let go sooner and it switches off again without writing anything. Booted
+  any other way (USB), it waits a second before switching the battery in and touching flash.
+  A Pico that restarted on the capacitors' last charge while switching off dies during that
+  wait instead of switching itself back on.
+- **Switching off:** MODE held 3 s, `c=off` from the phone, `auto_off_min` without use (a
+  15 s countdown first), the battery below 6.4 V for 10 s, or MODE never let go after
+  switching on (stuck, 10 s). It stops measuring, saves settings and the log, stops Wi-Fi and
+  drops GP12. If the Pico is still running a moment later, MODE is still held or it's on USB
+  power, and the screen says which.
+- **The radar** (GP9) is on while measuring is wanted (READ held, Auto read, the phone's
+  Measure) and for `radar_hold_s` after. Measuring starts 0.5 s after it powers up; the
+  background is then relearned, since the noise it learned before belongs to a radar that was
+  off. While it's off the frame loop idles.
+- **Use**, for the idle timer: shots, button presses and phone requests. Holding READ by itself
+  doesn't count, so a button stuck down in a bag can't keep the chrono on.
+
 ### Keeping it quiet
 
 - The Pico's 3.3 V converter is held in PWM mode (no pulse skipping in the audio band).
@@ -109,6 +134,8 @@ Stored as `key=value` lines in `/settings.txt`. Set any of them over the API
 | `batt_cal` | 0.8–1.2 | 1 | multiplies the battery voltage |
 | `k_paintball`, `k_dart` | 0.001–0.5 | 0.022, 0.098 | drag constants, 1/m (the dart one is an estimate) |
 | `backlight_s` | 0–3600 | 120 | screen timeout, 0 = always on |
+| `auto_off_min` | 0–240 | 15 | switch off after this many minutes without use, 0 = never |
+| `radar_hold_s` | 0–3600 | 60 | keep the radar powered this long after measuring, 0 = always |
 
 ## HTTP API
 
@@ -118,7 +145,7 @@ at 192.168.4.1, also announced as `chrono.local`. Commands accept GET or POST.
 | Request | Returns |
 |---|---|
 | `GET /` | the phone page (gzipped) |
-| `GET /api/state` | `rev`/`srev` (change counters), arming, battery, Wi-Fi clients, DSP counters (`noise_db`, `lost`, `gaps`, ...), current string summary, all settings |
+| `GET /api/state` | `rev`/`srev` (change counters), arming, `radar` (`off`, `warming`, `on`), `off_in_s` (idle countdown), battery, Wi-Fi clients, DSP counters (`noise_db`, `lost`, `gaps`, ...), current string summary, all settings. Each request counts as use. |
 | `GET /api/data[?cur=1]` | strings, newest first, each with `shots: [[muzzle_fps, chrono_fps, snr_db, flags, t_ms, sigma_fps, unix_s], ...]` |
 | `GET /api/cmd?c=new` | new string |
 | `c=del` / `c=undel` | delete the last shot of the current string / undo |
@@ -127,6 +154,7 @@ at 192.168.4.1, also announced as `chrono.local`. Commands accept GET or POST.
 | `c=arm&v=1` | measure for the next 60 s (the page renews it); `v=0` stops |
 | `c=time&v=<Unix ms>` | set the clock (the page does this on connect) |
 | `c=cal&v=<m/s>` | scale `cal` so the current string's average reads this |
+| `c=off` | save and switch off |
 | `GET /api/set?key=value&...` | change settings; reports keys it refused |
 | `GET /api/export.csv` | every string as CSV |
 | `GET /api/lastshot.wav` | the 50 kS/s samples around the last shot, 16-bit mono |
@@ -171,4 +199,6 @@ shots (`/api/lastshot.wav`) at each distance and projectile, run them through
 - The drag constant for half darts (0.098/m is an estimate). With long tracks the fit
   measures `k` itself; the shot log stores what each shot used.
 - Whether Wi-Fi transmissions show up in the noise floor (compare `noise_db` with Wi-Fi on and
-  off: hold MODE while switching on).
+  off; Wi-Fi is in the menu).
+- How long the radar and amplifier really take to settle after power-up (`radar_settle_ms` in
+  `power.h`, 0.5 s now), and whether readings shift while the radar warms up.

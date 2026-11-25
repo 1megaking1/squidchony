@@ -23,6 +23,8 @@ dsp::Config cfg_shared;
 volatile uint32_t cfg_version = 0;
 volatile bool armed_flag = false;
 volatile bool busy_flag = false;
+volatile bool radar_flag = true;
+volatile uint32_t relearn_req = 0;
 Status st_shared;
 int16_t last_buf[LAST_MAX];
 uint32_t last_n = 0;
@@ -37,6 +39,7 @@ acq::History history;
 int16_t frame[dsp::WIN];
 uint32_t next_end = 0;
 uint32_t gaps_seen = 0;
+uint32_t relearn_seen = 0;
 uint32_t last_publish_ms = 0;
 bool noise_init = false;
 Status st;
@@ -110,6 +113,28 @@ void loop() {
     restart();
   }
 
+  if (relearn_req != relearn_seen) {
+    relearn_seen = relearn_req;
+    analyzer.resetBackground();
+    tracker.reset();
+  }
+
+  // Radar unpowered: nothing to analyze. Keep up with the stream so we start fresh later.
+  if (!radar_flag) {
+    if (tracker.active()) tracker.reset();
+    next_end = acq::head() + dsp::WIN;
+    busy_flag = false;
+    st.lag_frames = 0;
+    uint32_t now = millis();
+    if (now - last_publish_ms >= 100) {
+      last_publish_ms = now;
+      critical_section_enter_blocking(&cs);
+      st_shared = st;
+      critical_section_exit(&cs);
+    }
+    return;
+  }
+
   const bool armed = armed_flag;
   uint32_t head = acq::head();
   for (int done = 0; done < FRAMES_PER_LOOP && (int32_t)(head - next_end) >= 0; done++) {
@@ -163,6 +188,10 @@ void setConfig(const dsp::Config& c) {
 }
 
 void setArmed(bool armed) { armed_flag = armed; }
+
+void setRadarPowered(bool on) { radar_flag = on; }
+
+void relearnBackground() { relearn_req = relearn_req + 1; }
 
 bool busy() { return busy_flag; }
 

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "power.h"
 #include "settings.h"
 #include "shotlog.h"
 
@@ -175,11 +176,161 @@ void testShotLog() {
   check(log.overflowed(), "journal overflow is reported (the file gets rewritten)");
 }
 
+// Runs the policy in 10 ms steps from `from` to `to` (inclusive), returning the last output and
+// whether any step asked to switch off or reported the radar settling.
+struct Sim {
+  PowerPolicy p;
+  PowerInputs in;
+  bool any_settled = false;
+  PowerOutputs run(uint32_t from, uint32_t to) {
+    PowerOutputs out;
+    for (uint32_t t = from; t <= to; t += 10) {
+      in.now_ms = t;
+      out = p.update(in);
+      in.activity = false;  // activity is an event, not a state
+      if (out.radar_settled) any_settled = true;
+      if (out.off != OffReason::None) break;
+    }
+    return out;
+  }
+};
+
+void testPower() {
+  std::printf("Power\n");
+  PowerConfig cfg;  // defaults: boot hold 400 ms, auto-off 15 min, radar hold 60 s, settle 500 ms
+  {
+    Sim s;
+    s.p.begin(0, true, cfg);
+    s.in.mode_held = true;
+    PowerOutputs o = s.run(0, 300);
+    check(o.booting && !o.radar_on, "while MODE is still being checked: booting, radar off");
+    s.in.mode_held = false;
+    o = s.run(310, 400);
+    check(o.off == OffReason::BootTap && !o.radar_on, "a quick tap on MODE switches straight back off");
+  }
+  {
+    Sim s;
+    s.p.begin(0, true, cfg);
+    s.in.mode_held = true;
+    PowerOutputs o = s.run(0, 700);
+    check(o.off == OffReason::None && !o.booting, "holding MODE through the check keeps it on");
+    s.in.mode_held = false;
+    o = s.run(710, 1400);
+    check(o.off == OffReason::None && o.radar_on, "letting go after the check is fine; the radar comes on");
+    s.in.mode_held = true;  // a later long press (the firmware's own 3 s hold switches off)
+    o = s.run(1410, 30000);
+    check(o.off == OffReason::None, "a later long press is not a stuck button");
+  }
+  {
+    Sim s;
+    s.p.begin(0, true, cfg);
+    s.in.mode_held = true;
+    PowerOutputs o = s.run(0, 9900);
+    check(o.off == OffReason::None, "MODE held from switch-on: still on after 9.9 s...");
+    o = s.run(9910, 10100);
+    check(o.off == OffReason::Stuck, "...and off at 10 s (stuck down in a bag?)");
+  }
+  {
+    Sim s;
+    s.p.begin(0, false, cfg);  // powered some other way (USB)
+    PowerOutputs o = s.run(0, 100);
+    check(o.off == OffReason::None && o.radar_on, "no power-button check without a button boot");
+    check(!o.measuring, "not measuring while the radar settles");
+    s.in.want_measure = true;
+    o = s.run(110, 600);
+    check(o.measuring && s.any_settled, "measuring once the radar has settled (half a second)");
+    s.in.want_measure = false;
+    o = s.run(610, 60000);
+    check(o.radar_on && !o.measuring, "radar stays on for a while after READ is let go");
+    o = s.run(60010, 61000);
+    check(!o.radar_on, "radar off a minute after it was last needed");
+    s.any_settled = false;
+    s.in.want_measure = true;
+    o = s.run(61010, 61400);
+    check(o.radar_on && !o.measuring, "pressing READ powers the radar back up...");
+    o = s.run(61410, 61600);
+    check(o.measuring && s.any_settled, "...and measures half a second later");
+  }
+  {
+    PowerConfig always = cfg;
+    always.radar_hold_ms = 0;
+    Sim s;
+    s.p.begin(0, false, always);
+    PowerOutputs o = s.run(0, 10 * 60000);
+    check(o.radar_on, "radar hold 0 keeps the radar on");
+  }
+  {
+    Sim s;
+    s.p.begin(0, false, cfg);
+    PowerOutputs o = s.run(0, 14 * 60000 + 50000);
+    check(o.off == OffReason::None && o.off_in_ms > 0 && o.off_in_ms <= 15000,
+          "warns in the last 15 s before an idle shutdown");
+    s.in.activity = true;
+    o = s.run(14 * 60000 + 50010, 14 * 60000 + 50020);
+    check(o.off_in_ms == 0, "any use cancels the countdown");
+    o = s.run(14 * 60000 + 50030, 30 * 60000);
+    check(o.off == OffReason::Idle, "switches off after 15 idle minutes");
+  }
+  {
+    Sim s;
+    s.p.begin(0, false, cfg);
+    s.in.want_measure = true;  // auto read: always armed, but nobody touches it
+    PowerOutputs o = s.run(0, 16 * 60000);
+    check(o.off == OffReason::Idle, "auto read alone doesn't keep it on forever");
+  }
+  {
+    PowerConfig never = cfg;
+    never.auto_off_ms = 0;
+    Sim s;
+    s.p.begin(0, false, never);
+    PowerOutputs o = s.run(0, 120 * 60000);
+    check(o.off == OffReason::None && o.off_in_ms == 0, "auto-off 0 means never");
+  }
+  {
+    Sim s;
+    s.p.begin(0, false, cfg);
+    s.in.batt_valid = true;
+    s.in.batt_v = 7.4f;
+    s.run(0, 1000);
+    s.in.batt_v = 6.3f;
+    PowerOutputs o = s.run(1010, 5000);
+    s.in.batt_v = 6.6f;  // a dip that recovers
+    o = s.run(5010, 6000);
+    s.in.batt_v = 6.3f;
+    o = s.run(6010, 15000);
+    check(o.off == OffReason::None, "a short dip below 6.4 V doesn't switch it off");
+    o = s.run(15010, 17000);
+    check(o.off == OffReason::Battery, "10 s below 6.4 V switches it off");
+    Sim u;
+    u.p.begin(0, false, cfg);
+    u.in.batt_valid = false;  // USB power: no battery reading
+    o = u.run(0, 60000);
+    check(o.off == OffReason::None, "no battery reading, no low-battery shutdown");
+  }
+  {
+    Sim s;
+    s.p.begin(0, false, cfg);
+    s.run(0, 1000);
+    s.p.requestOff();
+    PowerOutputs o = s.run(1010, 1010);
+    check(o.off == OffReason::User && !o.measuring, "turning off on request");
+  }
+  {
+    Settings st;
+    settingsSet(st, "auto_off_min", "30");
+    settingsSet(st, "radar_hold_s", "0");
+    PowerConfig pc = toPowerConfig(st);
+    check(pc.auto_off_ms == 30u * 60000u && pc.radar_hold_ms == 0, "power settings convert");
+    check(!settingsSet(st, "auto_off_min", "500"), "auto-off over 4 hours is refused");
+  }
+}
+
 }  // namespace
 
 int main() {
   testSettings();
   testShotLog();
+  testPower();
   std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "ALL CHECKS PASSED", g_failures,
               g_failures == 1 ? "" : "s");
   return g_failures ? 1 : 0;

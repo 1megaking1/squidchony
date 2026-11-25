@@ -15,8 +15,10 @@ each step with a multimeter as you go.
 
 ## Radar module (CDM324)
 
-- It's a copy of InnoSenT's IPM-165: **4.75 to 5.25 V**, about 30 mA. It drifts about
-  −1 MHz per °C as it warms up, so keep it powered whenever the chrono is on.
+- It's a copy of InnoSenT's IPM-165: **4.75 to 5.25 V**, about 30 mA. Its frequency drifts
+  about −1 MHz per °C as it warms up: 0.004% per °C, or about 0.15 fps at 350 fps for a 10 °C
+  change. That's small enough for the chrono to switch it off between strings. For the
+  steadiest readings, keep it on (Auto read, or `radar_hold_s=0`).
 - The beam comes out of the **flat side with the square copper patches**, roughly 80° wide one
   way and 32° the other. The metal can and the pins face into the housing.
 - On the IPM-165, pin 1 is VCC, pin 2 the IF (signal) and pin 3 GND. Clones may differ:
@@ -66,29 +68,130 @@ and a push.
 
 ## Power
 
-No switching regulators anywhere near the radar: just linear regulators and RC filters.
+No switching regulators anywhere near the radar: just linear regulators and RC filters. There
+is no power switch either: MODE switches the chrono on, and two P-channel MOSFETs do the rest.
+Q1 switches everything after the battery's protection board; Q2 switches the radar and its
+amplifier, which only get power while you're measuring.
 
 ```
-USB-C ─ IP2326 charger ─┐  (switches only while plugged in; ~1 µA otherwise)
-2×18650 ─ 2S BMS ─ P+ ──┴─ 1N5817 ─ switch ─┬─ 470µF ─ MIC2940A-5.0 ─┬─ 100µF ─ 1N5817 ─ Pico VSYS
-                                            │                         └─ button LEDs (2N3904)
-                                            ├─ 10Ω ─ 470µF ─ MCP1702 (1µF in/out) ─┬─ amplifier
-                                            │                                       └─ 2.2Ω ─ 1000µF ─ radar
-                                            └─ 470k ─┬─ GP27 (battery level)
-                                                     100k ∥ 100nF to GND
+USB-C ─ IP2326 charger ─┐  (switches only while plugged in)
+2S pack ─ 2S BMS ─ P+ ──┴─ 1N5817 ─ Q1 ─┬─ 470µF ─ MIC2940A-5.0 ─┬─ 100µF ─ 1N5817 ─ Pico VSYS
+                         soft power     │                         └─ button LEDs (2N3904)
+                         switch         ├─ Q2 ─ 10Ω ─ 470µF ─ MCP1702 (1µF in/out) ─┬─ amplifier
+                                        │  radar switch                             └─ 2.5Ω ─ 1000µF ─ radar
+                                        └─ 470k ─┬─ GP27 (battery level)
+                                                 100k ∥ 100nF to GND
 ```
 
-- **Charge with the power switch off.** The IP2326 board has no power path, so with the
-  switch on the chrono would run from the charger's switching output.
+- The charger connects to the BMS's P+ and P− just like the chrono, so the BMS guards both.
+  Use the Li-ion (4.2 V per cell) version of the BMS, and leave the charger set to 2S (8.4 V).
+- **2.5 Ω** is four 10 Ω resistors in parallel (anything from 1 to 3.3 Ω works there).
 - The MCP1702 rejects supply ripple poorly at 3–20 kHz, which is why the RC filters are there.
 - The second 1N5817 keeps USB from back-feeding the battery when you program the Pico.
 - The Pico 2 W's own 3.3 V converter (RT6154) would skip pulses at light load and put bursts
   in the audio band. The firmware holds it in steady PWM mode (wireless-chip GPIO1 high).
-- Battery reading: the divider sits after the reverse-protection diode, so the firmware adds
-  0.25 V (`BATT_DIODE_V` in `config.h`; set it to 0 if you wire the divider to the battery
-  directly). Calibrate it once with `batt_cal` (via `/api/set?batt_cal=...`) against a meter.
-- Runtime with 2 × 3500 mAh is roughly 20 hours. The firmware warns below 6.6 V (3.3 V per
-  cell); the BMS cuts off at 2.5–3.0 V per cell.
+- Battery reading: the divider sits after the reverse-protection diode and Q1, so it draws
+  nothing while the chrono is off. The firmware adds 0.25 V for the diode (`BATT_DIODE_V` in
+  `config.h`). Calibrate it once with `batt_cal` (via `/api/set?batt_cal=...`) against a meter.
+
+### Soft power switch (Q1)
+
+```
+ from the 1N5817 ──┬───────── S ─┐
+                   │             Q1  FQP27P06
+                  100k     ┌── G ─┘   D ──► everything else
+                   │       │
+              gate ●───────┘
+                   │
+                   ├───────── Q3 collector   (2N3904: emitter to GND,
+                   │                          base 10k to GP12 and 100k to GND)
+                   ▼ D1 1N4148
+                   │
+  GP14 ──►|────────●───── MODE button ───── GND
+       D2 1N4148
+```
+
+- Pressing MODE pulls Q1's gate down through D1, which switches everything on. The Pico
+  starts, sets GP12 high so that Q3 holds the gate down, and checks that MODE is still held a
+  moment later, so a knock in a bag switches it straight back off. Hold MODE until the
+  readings appear (about a second).
+- The Pico still reads MODE on GP14, through D2: about 0.5 V while pressed, which reads as
+  low. D2 also keeps the gate's battery voltage away from GP14 while the Pico is unpowered.
+- To switch off, the Pico saves, sets GP12 low and the 100k turns Q1 off. If MODE is still
+  held, D1 keeps the power on until it's let go.
+- Off, the only drain is the BMS and charger boards, about 10–20 µA, so a charged pack lasts
+  months (its own self-discharge is the limit). Check that the charger board has no LED lit
+  when unplugged.
+- Something pressing MODE in a bag keeps the power on. The chrono switches itself off after
+  10 s, but the Pico keeps drawing about 30 mA until the button is free, so mount MODE
+  recessed or put a guard ring around it.
+
+### Radar switch (Q2)
+
+```
+ switched supply ──┬───────── S ─┐
+                   │             Q2  FQP27P06
+                  100k     ┌── G ─┘   D ──► 10Ω ─ 470µF ─ MCP1702 ...
+                   │       │
+                   ●───────┘
+                   │
+                   └───────── Q4 collector   (2N3904: emitter to GND,
+                                              base 10k to GP9 and 100k to GND)
+```
+
+- The radar and amplifier draw about 45 mA, a third of the total. The firmware switches them
+  on when you hold READ (or with Auto read, or the phone's Measure switch) and off a minute
+  after you last measured (`radar_hold_s`). They need about half a second to settle; the
+  firmware waits that long before it measures, then relearns the background.
+- Q2 and Q4 sit in the digital chamber with Q1 and Q3. The switched line goes through the
+  ferrite bead into the radar chamber.
+
+**Pinouts.** FQP27P06 (TO-220), printed side facing you, legs down: gate, drain, source. Its
+metal tab is the drain, so keep it clear of the grounded copper foil. 2N3904 (TO-92), flat side
+facing you, legs down: emitter, base, collector. The band on a diode marks its cathode.
+
+### Run time
+
+The screen turns off after 2 minutes without use (`backlight_s`) and the radar only runs while
+you measure, so a day at the field averages about 120 mA.
+
+| Doing | Draw from the pack |
+|---|---|
+| Measuring, screen and Wi-Fi on | about 180 mA |
+| Between strings (radar asleep), screen on | about 135 mA |
+| Radar asleep, screen timed out | about 100 mA |
+| Wi-Fi off in the menu | about 40 mA less |
+| Off | 10–20 µA |
+
+| 2S pack | Shooting nonstop | A day at the field | Off |
+|---|---|---|---|
+| 1000 mAh | 4.5 h | 7 h | months |
+| 1500 mAh | 7 h | 10 h | months |
+| 2200 mAh | 10 h | 15 h | months |
+| 2 × 18650, 3500 mAh | 16 h | 24 h | months |
+
+These are estimates, counting 85% of the rated capacity as usable; measure the real current
+once it's built. The firmware warns below 6.6 V (3.3 V per cell), and below 6.4 V (3.2 V per
+cell) it saves and switches itself off, before the BMS would cut the power at 2.5–3.0 V per
+cell.
+
+### Charging
+
+The IP2326 board has no power path: it charges the pack, and the chrono, if on, runs from the
+pack. You can charge with the chrono on or off, but don't measure while it charges, because
+the charger's switching ripple reaches the radar. Left on, the chrono switches itself off
+after its Auto off time and the charger then finishes normally. (While the chrono is on, the
+charger may never see the current fall and its "full" light may not come on.)
+
+### If it won't switch on
+
+- Measure Q1's gate while pressing MODE: it should drop to about 0.6 V. If not, check D1's
+  direction (band toward the button).
+- If the gate drops but nothing gets power, check the BMS output. Some BMS boards switch off
+  after a short circuit (a big capacitor charging at switch-on can look like one) and only
+  come back once the charger is plugged in.
+- If it starts but goes off as soon as you let go of MODE, Q3 isn't holding the gate: check
+  the 10k from GP12 to its base and the transistor's pinout.
 
 ## Pico pins
 
@@ -101,8 +204,11 @@ USB-C ─ IP2326 charger ─┐  (switches only while plugged in; ~1 µA otherwi
 | GP20 / GP21 | screen DC / RST |
 | GP22 | screen backlight (Lite): on/off only |
 | GP13 | screen's microSD chip select (unused for now, held high) |
-| GP15 / GP14 | READ / MODE buttons to GND (internal pull-ups) |
+| GP15 | READ button to GND (internal pull-up) |
+| GP14 | MODE button, through D2 (internal pull-up) |
 | GP11 / GP10 | READ / MODE LEDs, through 4.7 kΩ to each 2N3904 base |
+| GP12 | soft power switch: high holds the chrono on (10 kΩ to Q3's base) |
+| GP9 | radar switch: high powers the radar and amplifier (10 kΩ to Q4's base) |
 | 3V3(OUT) | screen VIN (keep the total under 300 mA) |
 
 Avoid GP23, GP24, GP25 and GP29: the Pico 2 W uses them for the wireless chip.
@@ -112,12 +218,15 @@ the 5 V rail and the collector. Check what your buttons' LEDs are rated for. One
 5 V usually have the resistor built in and connect straight across. A bare LED needs about
 150 Ω in series (around 15 mA at 5 V). Ones rated 12 V will be dim on 5 V. The firmware only
 ever switches them fully on or off, never dims them, and doesn't change them while a shot is
-being measured.
+being measured. The LED needs its own two pins, separate from the switch's (most LED buttons
+have C, NO and NC for the switch plus + and − for the LED). Wire MODE's switch between GND and
+the two diodes, and READ's between GND and GP15.
 
 ## Shielding and enclosure
 
 1. **Two chambers.** The radar chamber holds the CDM324, the amplifier right behind it and the
-   MCP1702. Everything else (battery, charger, BMS, Pico, screen) goes in the digital chamber.
+   MCP1702. Everything else (battery, charger, BMS, the power switches, Pico, screen) goes in
+   the digital chamber.
    The USB-C opening is on the digital side.
 2. Line the radar chamber with copper tape and **ground it at one point**, at the MCP1702's
    ground. Several ground points make loops that pick up noise.

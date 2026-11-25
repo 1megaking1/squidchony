@@ -315,12 +315,18 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
         <p class="hint">Used to work back from the speed at the chrono to the muzzle.</p>
       </div>
       <label class="switch" for="autoRead">Auto read (no need to hold READ)<input type="checkbox" id="autoRead"><span aria-hidden="true"></span></label>
+      <div class="setting">
+        <label class="k" for="autoOff">Switch off when unused</label>
+        <div class="inline-input"><input id="autoOff" type="number" inputmode="numeric" min="0" max="240" step="5" value="15"><span>minutes (0 = never)</span></div>
+        <p class="hint">Hold MODE about a second to switch it on, or 3 seconds to switch it off.</p>
+      </div>
       <div class="setting" id="calRow" hidden>
         <label class="k" for="calRef">Calibrate against another chrono</label>
         <div class="inline-input"><input id="calRef" type="number" inputmode="decimal" step="0.1" placeholder="Its average"><span id="calUnit">fps</span><button class="btn small" id="calGo" type="button">Calibrate</button></div>
         <p class="hint">Shoot a string through both, enter the other chrono's average for the same shots, and later readings are scaled to match. Factor now: <span id="calNow">1.0000</span>.</p>
       </div>
       <label class="switch" for="wake">Keep screen on<input type="checkbox" id="wake"><span aria-hidden="true"></span></label>
+      <button class="btn" id="powerOff" type="button" hidden>Turn the chrono off</button>
       <p class="hint" id="diag" hidden></p>
     </div>
   </section>
@@ -904,10 +910,11 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     for (const input of document.querySelectorAll(`input[name="${name}"]`)) input.checked = input.value === value;
   }
 
-  function setArmedUi(armed, busy) {
-    $('armed').classList.toggle('busy', busy);
-    $('armed').classList.toggle('idle', !armed && !busy);
-    $('armedText').textContent = busy ? 'Measuring' : armed ? 'Armed' : 'Idle';
+  function setArmedUi(armed, busy, radar) {
+    const warming = radar === 'warming';
+    $('armed').classList.toggle('busy', busy || warming);
+    $('armed').classList.toggle('idle', !armed && !busy && !warming);
+    $('armedText').textContent = busy ? 'Measuring' : warming ? 'Warming up' : armed ? 'Armed' : radar === 'off' ? 'Radar asleep' : 'Idle';
   }
 
   function updateMountUi() {
@@ -928,6 +935,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
       if (set[key] && state[key] !== set[key]) { state[key] = set[key]; setChecked(key, set[key]); redraw = true; }
     }
     if (document.activeElement !== $('distFt')) $('distFt').value = set.dist_ft;
+    if (document.activeElement !== $('autoOff') && set.auto_off_min !== undefined) $('autoOff').value = set.auto_off_min;
     if (document.activeElement !== $('offsetMm')) $('offsetMm').value = Math.round(set.offset_mm);
     if (document.activeElement !== $('aheadMm')) $('aheadMm').value = Math.round(set.ahead_mm);
     $('autoRead').checked = !!set.auto;
@@ -942,7 +950,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     $('linkDot').classList.remove('off');
     $('linkPill').title = `Firmware ${st.fw} at ${location.host}`;
     $('howSsid').textContent = st.ssid;
-    setArmedUi(st.armed, st.busy);
+    setArmedUi(st.armed, st.busy, st.radar);
     applySettings(st.settings);
     const d = st.dsp;
     $('diag').hidden = false;
@@ -1022,6 +1030,16 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     if (v >= -100 && v <= 200) sendSetting('ahead_mm', v.toFixed(0));
     else toast('Enter -100 to 200 mm.');
   });
+  $('autoOff').addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (!(v >= 0 && v <= 240)) { toast('Enter 0 to 240 minutes.'); return; }
+    if (live.on) sendSetting('auto_off_min', String(v));
+    else toast(v ? `On the chrono, it switches itself off after ${v} unused minutes.` : 'On the chrono, it stays on until you switch it off.');
+  });
+  $('powerOff').addEventListener('click', () => {
+    if (!confirm('Turn the chrono off? Your shots are saved first.')) return;
+    liveCmd({ c: 'off' }, 'Switching off. Hold MODE about a second to switch it back on.');
+  });
   $('autoRead').addEventListener('change', (e) => {
     if (live.on) sendSetting('auto', e.target.checked ? 1 : 0);
     else toast(e.target.checked ? 'On the chrono, shots now count without holding READ.' : 'Hold READ while shooting.');
@@ -1040,11 +1058,12 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
     updateMeasureButton();
     $('wavLink').hidden = false;
     $('calRow').hidden = false;
+    $('powerOff').hidden = false;
     $('csvDownload').hidden = false;
     $('sheetHint').textContent = 'Download saves chrono.csv (in Safari it goes to Downloads in the Files app), or copy the text.';
     $('linkText').textContent = 'Connecting…';
     $('linkDot').classList.add('off');
-    setArmedUi(false, false);
+    setArmedUi(false, false, 'on');
     api('/api/cmd', { c: 'time', v: String(Date.now()) }).catch(() => {});
     await poll();
     setInterval(poll, 700);

@@ -6,7 +6,9 @@ A DIY radar chronograph for paintball and half-length foam darts (about 100 to 3
 A 24 GHz CDM324 Doppler radar module feeds a two-stage op-amp amplifier into a
 Raspberry Pi Pico 2 W. The Pico works out each shot's speed, shows it on a 2.0" screen with
 the string's average, SD, extreme spread, low, high and rate of fire, and serves a phone page
-over its own Wi-Fi network, so it works in the woods with no internet or cell signal.
+over its own Wi-Fi network, so it works in the woods with no internet or cell signal. There
+is no power switch: holding MODE switches it on, it switches itself off when unused, and
+off it draws so little that a charged battery lasts months in a gear bag.
 
 **Status: early development.** The signal processing runs and is tested in simulation. The
 firmware compiles for the Pico 2 W (CI builds it on every push) but has not run on real
@@ -25,7 +27,7 @@ hardware yet. Expect to tune things once there are real echoes to look at.
 | --- | --- |
 | `firmware/squidchrony/` | Arduino sketch for the Pico 2 W (earlephilhower arduino-pico core) |
 | `firmware/squidchrony/dsp.*` | Signal processing: decimation filter, per-frame spectrum, shot tracking, drag and geometry fit. Plain C++, so it also runs on a PC |
-| `tests/host/` | Simulated shots run through the same code, plus settings and shot-log tests (`make -C tests/host`) |
+| `tests/host/` | Simulated shots run through the same code, plus settings, shot-log and power tests (`make -C tests/host`) |
 | `web/chrono-remote.html` | The phone page. Served by the chrono it shows live data; opened anywhere else it's a demo with simulated shots |
 | `tools/` | `design_fir.py` (decimation filter), `make_web_header.py` (packs the page into the firmware), `mock_chrono.py` (fake API for working on the page) |
 | `sim/` | The original feasibility simulation and amplifier frequency-response check |

@@ -117,6 +117,16 @@ bool settingsSet(Settings& s, const char* key, const char* value) {
     s.backlight_s = (uint16_t)f;
     return true;
   }
+  if (!strcmp(key, "auto_off_min")) {
+    if (!parseFloat(value, 0.0f, 240.0f, &f)) return false;
+    s.auto_off_min = (uint16_t)f;
+    return true;
+  }
+  if (!strcmp(key, "radar_hold_s")) {
+    if (!parseFloat(value, 0.0f, 3600.0f, &f)) return false;
+    s.radar_hold_s = (uint16_t)f;
+    return true;
+  }
   if (!strcmp(key, "wifi_pass")) {
     size_t len = strlen(value);
     if (len != 0 && (len < 8 || len >= sizeof(s.wifi_pass))) return false;
@@ -132,11 +142,13 @@ size_t settingsToText(const Settings& s, char* out, size_t n) {
   int len = snprintf(out, n,
                      "proj=%s\nsens=%s\nunits=%s\nreading=%s\nmount=%s\ndist_ft=%.2f\n"
                      "offset_mm=%.1f\nahead_mm=%.1f\nauto=%d\nwifi=%d\ncal=%.5f\nbatt_cal=%.4f\n"
-                     "k_paintball=%.4f\nk_dart=%.4f\nbacklight_s=%u\nwifi_pass=%s\n",
+                     "k_paintball=%.4f\nk_dart=%.4f\nbacklight_s=%u\nauto_off_min=%u\n"
+                     "radar_hold_s=%u\nwifi_pass=%s\n",
                      projectileName(s.proj), sensitivityName(s.sens), unitsName(s.units),
                      readingName(s.reading), mountName(s.mount), s.dist_ft, s.offset_mm,
                      s.ahead_mm, s.auto_read ? 1 : 0, s.wifi ? 1 : 0, s.cal, s.batt_cal,
-                     s.k_paintball, s.k_dart, (unsigned)s.backlight_s, s.wifi_pass);
+                     s.k_paintball, s.k_dart, (unsigned)s.backlight_s, (unsigned)s.auto_off_min,
+                     (unsigned)s.radar_hold_s, s.wifi_pass);
   if (len < 0) return 0;
   return (size_t)len < n ? (size_t)len : (n ? n - 1 : 0);
 }
@@ -168,11 +180,13 @@ size_t settingsToJson(const Settings& s, char* out, size_t n) {
                      "{\"proj\":\"%s\",\"sens\":\"%s\",\"units\":\"%s\",\"reading\":\"%s\","
                      "\"mount\":\"%s\",\"dist_ft\":%.2f,\"offset_mm\":%.1f,\"ahead_mm\":%.1f,"
                      "\"auto\":%s,\"wifi\":%s,\"cal\":%.5f,\"batt_cal\":%.4f,"
-                     "\"k_paintball\":%.4f,\"k_dart\":%.4f,\"backlight_s\":%u,\"wifi_locked\":%s}",
+                     "\"k_paintball\":%.4f,\"k_dart\":%.4f,\"backlight_s\":%u,\"auto_off_min\":%u,"
+                     "\"radar_hold_s\":%u,\"wifi_locked\":%s}",
                      projectileName(s.proj), sensitivityName(s.sens), unitsName(s.units),
                      readingName(s.reading), mountName(s.mount), s.dist_ft, s.offset_mm,
                      s.ahead_mm, s.auto_read ? "true" : "false", s.wifi ? "true" : "false", s.cal,
                      s.batt_cal, s.k_paintball, s.k_dart, (unsigned)s.backlight_s,
+                     (unsigned)s.auto_off_min, (unsigned)s.radar_hold_s,
                      s.wifi_pass[0] ? "true" : "false");
   if (len < 0) return 0;
   return (size_t)len < n ? (size_t)len : (n ? n - 1 : 0);
@@ -180,6 +194,13 @@ size_t settingsToJson(const Settings& s, char* out, size_t n) {
 
 float dragConstant(const Settings& s, Projectile p) {
   return p == Projectile::Dart ? s.k_dart : s.k_paintball;
+}
+
+PowerConfig toPowerConfig(const Settings& s) {
+  PowerConfig p;
+  p.auto_off_ms = (uint32_t)s.auto_off_min * 60000u;
+  p.radar_hold_ms = (uint32_t)s.radar_hold_s * 1000u;
+  return p;
 }
 
 dsp::Config toDspConfig(const Settings& s) {

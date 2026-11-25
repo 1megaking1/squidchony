@@ -12,12 +12,12 @@ test: test_dsp test_app replay
 test_dsp: test_dsp.cpp $(FW)/dsp.cpp $(FW)/dsp.h $(FW)/fir_coeffs.h
 	$(CXX) $(CXXFLAGS) -DDSP_DEBUG -I$(FW) -o $@ test_dsp.cpp $(FW)/dsp.cpp
 
-test_app: test_app.cpp $(FW)/settings.cpp $(FW)/settings.h $(FW)/shotlog.cpp $(FW)/shotlog.h $(FW)/dsp.h
-	$(CXX) $(CXXFLAGS) -I$(FW) -o $@ test_app.cpp $(FW)/settings.cpp $(FW)/shotlog.cpp
+test_app: test_app.cpp $(FW)/settings.cpp $(FW)/settings.h $(FW)/shotlog.cpp $(FW)/shotlog.h $(FW)/power.cpp $(FW)/power.h $(FW)/dsp.h
+	$(CXX) $(CXXFLAGS) -I$(FW) -o $@ test_app.cpp $(FW)/settings.cpp $(FW)/shotlog.cpp $(FW)/power.cpp
 
 # Replays a recorded shot (the phone's "Last shot (WAV)") through the firmware's processing.
-replay: replay.cpp $(FW)/dsp.cpp $(FW)/dsp.h $(FW)/settings.cpp $(FW)/settings.h
-	$(CXX) $(CXXFLAGS) -I$(FW) -o $@ replay.cpp $(FW)/dsp.cpp $(FW)/settings.cpp
+replay: replay.cpp $(FW)/dsp.cpp $(FW)/dsp.h $(FW)/settings.cpp $(FW)/settings.h $(FW)/power.cpp $(FW)/power.h
+	$(CXX) $(CXXFLAGS) -I$(FW) -o $@ replay.cpp $(FW)/dsp.cpp $(FW)/settings.cpp $(FW)/power.cpp
 
 clean:
 	rm -f test_dsp test_app replay

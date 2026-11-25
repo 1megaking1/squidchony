@@ -37,6 +37,10 @@ void loop();
 // Core 0
 void setConfig(const dsp::Config& cfg);
 void setArmed(bool armed);
+// The radar and amplifier are switched off: stop analyzing until they are back.
+void setRadarPowered(bool on);
+// The radar has just settled after power-up: forget the background learned meanwhile.
+void relearnBackground();
 bool busy();  // a track is in progress, or analysis is catching up
 bool popShot(ShotMsg* out);
 Status status();

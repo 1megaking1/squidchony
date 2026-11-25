@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "dsp.h"
+#include "power.h"
 
 enum class Projectile : uint8_t { Paintball = 0, Dart = 1 };
 enum class Sensitivity : uint8_t { Low = 0, Normal = 1, High = 2 };
@@ -28,6 +29,8 @@ struct Settings {
   float k_paintball = 0.022f;  // drag constants, 1/m (dv/dx = -k v)
   float k_dart = 0.098f;
   uint16_t backlight_s = 120;  // screen timeout, 0 = always on
+  uint16_t auto_off_min = 15;  // switch off after this long without use, 0 = never
+  uint16_t radar_hold_s = 60;  // keep the radar powered this long after measuring, 0 = always
   char wifi_pass[24] = "";     // empty = open network; otherwise 8+ characters (WPA2)
 };
 
@@ -53,6 +56,7 @@ size_t settingsToJson(const Settings& s, char* out, size_t n);
 
 float dragConstant(const Settings& s, Projectile p);
 dsp::Config toDspConfig(const Settings& s);
+PowerConfig toPowerConfig(const Settings& s);
 
 // Speed in the user's units.
 inline float toUserUnits(const Settings& s, float mps) {

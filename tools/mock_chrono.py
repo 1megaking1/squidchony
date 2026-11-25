@@ -31,7 +31,8 @@ state = {
     "settings": {"proj": "paintball", "sens": "normal", "units": "fps", "reading": "muzzle",
                  "mount": "downrange", "dist_ft": 3.0, "offset_mm": 40.0, "ahead_mm": 20.0,
                  "auto": False, "wifi": True, "cal": 1.0, "batt_cal": 1.0, "k_paintball": 0.022,
-                 "k_dart": 0.098, "backlight_s": 120, "wifi_locked": False},
+                 "k_dart": 0.098, "backlight_s": 120, "auto_off_min": 15, "radar_hold_s": 60,
+                 "wifi_locked": False},
     "strings": [],
     "deleted": [],
 }
@@ -127,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
                     "rev": state["rev"], "srev": state["srev"], "fw": "mock", "ssid": "CHRONO-M0CK",
                     "armed": armed, "held": False, "web_armed": time.time() < state["armed_until"],
                     "busy": False, "clients": 1, "time_set": True, "batt_v": 7.7, "batt_pct": 62,
-                    "batt_low": False,
+                    "batt_low": False, "radar": "on" if armed else "off", "off_in_s": 0,
                     "dsp": {"noise_db": 11.8, "peak_db": 3.1, "peak_hz": 0, "frames": 1000, "shots": 0,
                             "lost": state["lost"], "rejected": 0, "gaps": 0, "dropped": 0, "lag": 0},
                     "cur": {"id": cur["id"], "name": cur["name"], "proj": cur["proj"], "mount": cur["mount"],
@@ -147,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     old = state["settings"][k]
                     state["settings"][k] = (v in ("1", "true")) if isinstance(old, bool) else (
-                        float(v) if isinstance(old, float) else v)
+                        float(v) if isinstance(old, float) else int(float(v)) if isinstance(old, int) else v)
                     if k in ("proj", "mount") and live_shots(current()):
                         self.new_string()
                     elif k in ("proj", "mount"):
@@ -200,6 +201,8 @@ class Handler(BaseHTTPRequestHandler):
             state["armed_until"] = time.time() + 60 if v == "1" else 0
         elif c == "time":
             pass
+        elif c == "off":
+            print("mock chrono: switched off (pretend)")
         elif c == "cal":
             live = [x["muzzle"] if state["settings"]["reading"] == "muzzle" else x["chrono"] for x in live_shots(cur)]
             if len(live) < 3:

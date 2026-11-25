@@ -2,7 +2,8 @@
 
 ## Quick start
 
-1. Switch it on. The screen shows the Wi-Fi name (`CHRONO-xxxx`) for a few seconds.
+1. Hold MODE for about a second, until the readings appear, to switch it on. The screen shows
+   the Wi-Fi name (`CHRONO-xxxx`) for a few seconds.
 2. Set it up downrange (3–6 ft in front of the muzzle, aimed back at it, the shot passing a
    few inches over it) or strap it beside the barrel. Pick the same mounting in the menu or on
    the phone, and enter the distance.
@@ -14,15 +15,17 @@
 | Button | Press | Does |
 |---|---|---|
 | READ | hold | measure while held (the READ LED is on; it blinks off once per shot) |
+| MODE | hold about 1 s, while off | switch on |
 | MODE | click | start a new string |
-| MODE | hold | open the menu |
-| MODE | held while switching on | start with Wi-Fi off |
+| MODE | hold about 1 s and let go | open the menu |
+| MODE | hold 3 s | switch off (shots and settings are saved first) |
 
 The first press after the screen has timed out only wakes it (holding READ still measures).
+While you hold MODE, the screen says what letting go will do.
 
 **Menu:** MODE moves to the next item, READ changes it, holding MODE closes the menu (it also
 closes after 30 s). Items: projectile, report (muzzle or at the chrono), units, sensitivity,
-mounting, distance (downrange only), auto read, Wi-Fi, delete last shot.
+mounting, distance (downrange only), auto read, auto off, Wi-Fi, delete last shot.
 
 **MODE LED:** on when a phone is connected, blinking while Wi-Fi waits for one, off with Wi-Fi off.
 
@@ -38,7 +41,28 @@ mounting, distance (downrange only), auto read, Wi-Fi, delete last shot.
 - The tiles: average (with the shot count), SD, extreme spread, low, high, and rate of fire
   for the latest burst (3+ shots under 0.6 s apart).
 - Messages replace the shot line for a few seconds: "New string", "No reading: weak echo",
-  "Echo clipped: move back", "Battery low".
+  "Echo clipped: move back", "Battery low", "Radar warming up", "Off in 15 s: tap a button".
+
+## Switching on and off
+
+- **On:** hold MODE about a second ("Keep holding MODE" shows until it's ready). A quick tap
+  does nothing, so it won't switch on from a knock in a bag. If something keeps MODE pressed,
+  it switches back off after 10 seconds (but keep MODE from being pressed in the bag anyway:
+  while it's held, the chrono can't fully cut its power).
+- **Off:** hold MODE for 3 seconds, or tap "Turn the chrono off" on the phone page.
+- **Auto off:** after 15 minutes without use it switches itself off. Every shot and button
+  press counts as use, and so does having the phone page open; just holding READ doesn't. In
+  the last 15 seconds the screen counts down, and any button keeps it on. Set it in the menu
+  (5, 15, 30 or 60 minutes, or never) or on the phone (any number of minutes, 0 = never).
+- **Flat battery:** below 6.4 V it saves and switches itself off.
+- **Off, it draws almost nothing** (only the battery's protection and charger boards), so a
+  charged battery lasts for months in a bag.
+
+**The radar sleeps between strings.** It's powered while you hold READ (or with Auto read on,
+or while the phone's Measure is on) and for a minute after. Waking it takes half a second
+("Radar warming up"), so press READ a moment before the first shot of a string. On the phone
+the status shows "Radar asleep" or "Warming up". `radar_hold_s` (see docs/firmware.md) sets
+the minute; 0 keeps the radar on whenever the chrono is on.
 
 ## The phone
 
@@ -72,5 +96,7 @@ the settings. On the phone you can:
 
 ## Battery and charging
 
-Charge over USB-C **with the power switch off** (about 3–4 hours from a phone charger). The
-battery shows LOW! below 6.6 V; charge soon after that.
+Charge over the charger's USB-C socket from a phone charger; it takes a few hours. It can be
+on or off while charging, but don't measure while it charges: the charger's switching shows up
+as noise. If you leave it on, it switches itself off after the Auto off time and the charger
+then finishes normally. The battery shows LOW! below 6.6 V; charge soon after that.

@@ -24,6 +24,11 @@ constexpr int PIN_BTN_READ = 15;   // to GND when pressed, internal pull-up
 constexpr int PIN_BTN_MODE = 14;
 constexpr int PIN_LED_READ = 11;   // high = LED on (2N3904 low-side switch from the 5 V rail)
 constexpr int PIN_LED_MODE = 10;
+// Soft power switch: high holds the chrono on (2N3904 pulling the P-MOSFET's gate low).
+// MODE turns it on by itself through a diode; the firmware takes over within a moment.
+constexpr int PIN_POWER_HOLD = 12;
+// Radar and amplifier power (second P-MOSFET switch): high = powered.
+constexpr int PIN_RADAR_EN = 9;
 
 // The Pico 2 W's 3.3 V buck-boost (RT6154) skips pulses at light load ("PFM"), which puts
 // bursts of noise in the audio band where the Doppler tones live. Its MODE pin is wired to

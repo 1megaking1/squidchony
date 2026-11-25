@@ -8,7 +8,7 @@
 //   GET /api/state             live status, settings and current-string summary
 //   GET /api/data[?cur=1]      strings with their shots (cur=1: only the current one)
 //   GET /api/cmd?c=...         new | del | undel | name&v=..[&id=..] | rm&id=.. | clear |
-//                              arm&v=0/1 | time&v=<Unix ms> | cal&v=<reference m/s>
+//                              arm&v=0/1 | time&v=<Unix ms> | cal&v=<reference m/s> | off
 //   GET /api/set?key=value..   change settings (see settings.cpp for keys)
 //   GET /api/export.csv        every string as CSV
 //   GET /api/lastshot.wav      the samples around the last shot, 50 kS/s 16-bit mono
