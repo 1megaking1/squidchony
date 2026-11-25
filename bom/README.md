@@ -1,13 +1,12 @@
 # Parts
 
-Prices and stock are from DigiKey's US site in November 2026 and will drift. About $82 for
-the DigiKey order, or $94 with the optional socket strip, before shipping and tax.
+Prices and stock are from DigiKey's US site in November 2026 and will drift. About $87 for
+the DigiKey order, before shipping and tax.
 
 ## DigiKey order
 
-`digikey-bulk-add.txt` pastes straight into DigiKey's bulk-add box. It leaves out resistors
-(they come from a 1% metal-film kit, see below) and the parts bought elsewhere. Delete the
-last line (`ED6264-64-ND`) if you're skipping the socket strip.
+`digikey-bulk-add.txt` pastes straight into DigiKey's bulk-add box (35 lines: everything
+except the parts bought elsewhere, listed at the bottom).
 
 **Controller and screen**
 
@@ -52,26 +51,28 @@ last line (`ED6264-64-ND`) if you're skipping the socket strip.
 | 4 | BC1008CT-ND | 39 pF C0G | 150 kΩ (60 dB) |
 | 4 | BC1004CT-ND | 18 pF C0G | 330 kΩ (74 dB) |
 | 4 | BC1002CT-ND | 12 pF C0G | 470 kΩ (80 dB) |
-| 1 | ED6264-64-ND | Mill-Max 64-pin socket strip (optional) | cut into sockets for swappable parts |
 
-**Resistors** (from a 1% metal-film kit; measure each one before soldering, kit bags get mixed up)
+For the parts you might swap (R7, R8, C6, C7, C3, C8), IC socket strips cut to size work as
+sockets. Test-fit a resistor lead first and don't force it; a tight lead stretches the contact.
 
-| Value | How many | Where |
-|---|---|---|
-| 2.2 Ω | 1 | radar supply filter, after the MCP1702 |
-| 10 Ω | 1 | radar supply filter, before the MCP1702 |
-| 4.7 kΩ | 3 + 2 | amplifier R4, R5, R6; LED transistor bases |
-| 10 kΩ | 3 | bias divider R2, R3; ADC divider top |
-| 15 kΩ | 1 | ADC divider bottom |
-| 220 kΩ | 2 | gain R7, R8 (starting value) |
-| 100 kΩ, 150 kΩ, 330 kΩ | 2 each | other gain steps; 100 kΩ also battery divider bottom |
-| 470 kΩ | 2 + 1 | gain step; battery divider top |
+**Resistors** (Stackpole RNMF14FTC 1% metal film, 1/4 W; the 2.2 Ω is a 5% carbon film, which
+is fine in a supply filter). Ten of a value costs about the same as three.
 
-If you'd rather order resistors too: `S10CACT-ND` (10 Ω), `2.2QBK-ND` (2.2 Ω), and
-`S4.7KCACT-ND`, `S10KCACT-ND`, `S15KCACT-ND`, `S100KCACT-ND`, `S150KCACT-ND`,
-`S220KCACT-ND`, `S330KCACT-ND`, `S473KCACT-ND` (10 of each is cheaper than fewer).
+| Qty | DigiKey # | Value | Where (how many used) |
+|---|---|---|---|
+| 10 | S10CACT-ND | 10 Ω | radar supply filter, before the MCP1702 (1) |
+| 2 | 2.2QBK-ND | 2.2 Ω | radar supply filter, after the MCP1702 (1) |
+| 10 | S4.7KCACT-ND | 4.7 kΩ | amplifier R4, R5, R6 (3); LED transistor bases (2) |
+| 10 | S10KCACT-ND | 10 kΩ | bias divider R2, R3 (2); ADC divider top (1) |
+| 10 | S15KCACT-ND | 15 kΩ | ADC divider bottom (1) |
+| 10 | S220KCACT-ND | 220 kΩ | gain R7, R8 (2), the starting value |
+| 10 | S100KCACT-ND | 100 kΩ | battery divider bottom (1); gain step (2) |
+| 10 | S150KCACT-ND | 150 kΩ | gain step (2) |
+| 10 | S330KCACT-ND | 330 kΩ | gain step (2) |
+| 10 | S473KCACT-ND | 470 kΩ | battery divider top (1); gain step (2) |
+| 10 | S150CACT-ND | 150 Ω | button LEDs, only if they have no built-in resistor (2) |
 
-Backups if something sells out: 1 nF `C315C102JAG5TA-ND`; 220 kΩ `CMF50220K00FHEA-ND`.
+Backup if something sells out: 1 nF `C315C102JAG5TA-ND`.
 
 ## Bought elsewhere
 

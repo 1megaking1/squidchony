@@ -61,7 +61,7 @@ diagnostics line (noise floor, weak echoes) and the "Echo clipped" message tell 
 | Junk readings from hands moving | raise the low cutoff: two 22 nF in series (11 nF, ~3.1 kHz) |
 | Slow darts (~100 fps) much weaker than fast shots | lower it: two 22 nF in parallel (44 nF, ~770 Hz) |
 
-Sockets (cut from the Mill-Max strip) for R7, R8, C6, C7, C3 and C8 make these swaps a pull
+Sockets (cut from an IC socket strip) for R7, R8, C6, C7, C3 and C8 make these swaps a pull
 and a push.
 
 ## Power
